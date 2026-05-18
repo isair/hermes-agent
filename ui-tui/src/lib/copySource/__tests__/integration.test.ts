@@ -299,4 +299,101 @@ describe('integration: byte-exact copy text from selection', () => {
 
     expect(toCopyText({ anchor, focus, transcript })).toBe('paragraph\nsecond ')
   })
+
+  it('python fence: selecting a single code line via in-range points returns just that line', () => {
+    // Regression: selecting the docstring line `    """packet says hi !!"""`
+    // inside a python fence should copy exactly that line, not the
+    // surrounding code or the whole fence.
+    const fenceOuter = [
+      '```python',
+      'def greet(name: str) -> str:',
+      '    """packet says hi !!"""',
+      '    return f"awaaaaa hi {name} >w<"',
+      '',
+      'print(greet("ethie"))',
+      '```'
+    ].join('\n')
+
+    const fenceLines = fenceOuter.split('\n')
+    const innerSource = fenceLines.slice(1, -1).join('\n')
+    const innerOffset = fenceLines[0]!.length + 1
+
+    const id = registerRange({
+      msgId: 'm1',
+      blockIndex: 1,
+      outerSource: fenceOuter,
+      innerSource,
+      innerOffset,
+      visualLineCount: fenceLines.length,
+      getOffset: simpleOffsetFor(fenceOuter, buildLineStartsFromRows(fenceLines))
+    })
+
+    const transcript = [{ id: 'm1', order: 0 }]
+
+    // Visual row 2 = docstring line (row 0 = opener / chrome label,
+    // row 1 = def line, row 2 = docstring). col 0 = line start, col
+    // 27 = end of `    """packet says hi !!"""`.
+    const anchor: SelectionPoint = { kind: 'in-range', rangeId: id, visualLine: 2, col: 0 }
+    const focus: SelectionPoint = { kind: 'in-range', rangeId: id, visualLine: 2, col: 27 }
+
+    // Fence-stripping rule applies: both endpoints land in innerSource
+    // bounds → output is the innerSource slice, not the outerSource
+    // slice (which would include the line with no opener/closer
+    // adjustment).
+    expect(toCopyText({ anchor, focus, transcript })).toBe('    """packet says hi !!"""')
+  })
+
+  it('python fence: selecting one wrapped code line past visualLineCount clamps to last source row', () => {
+    // What happens if the docstring is the LAST tracked source row and
+    // the hit-test reports visualLine past visualLineCount (e.g.
+    // because the renderer wrapped the line to multiple visual rows
+    // but the block was registered with source-line-count only).
+    //
+    // Defensive fallback in pointToOffset clamps to last-row getOffset,
+    // bounded by the line's source-end. So the slice is at MOST the
+    // docstring line itself, never spilling into post-fence content.
+    const fenceOuter = [
+      '```python',
+      '    """packet says hi !!"""',
+      '```'
+    ].join('\n')
+
+    const fenceLines = fenceOuter.split('\n')
+    const innerSource = fenceLines.slice(1, -1).join('\n')
+    const innerOffset = fenceLines[0]!.length + 1
+
+    const id = registerRange({
+      msgId: 'm1',
+      blockIndex: 1,
+      outerSource: fenceOuter,
+      innerSource,
+      innerOffset,
+      visualLineCount: fenceLines.length,
+      getOffset: simpleOffsetFor(fenceOuter, buildLineStartsFromRows(fenceLines))
+    })
+
+    const transcript = [{ id: 'm1', order: 0 }]
+
+    // visualLine=99 simulates a click past the tracked visual rows
+    // (e.g. wrap-continuation row beyond visualLineCount). The
+    // defensive clamp in pointToOffset defers to the last-row offset,
+    // which gets clamped to the row's source-end by simpleOffsetFor.
+    const anchor: SelectionPoint = { kind: 'in-range', rangeId: id, visualLine: 1, col: 0 }
+    const focus: SelectionPoint = { kind: 'in-range', rangeId: id, visualLine: 99, col: 0 }
+
+    // Last tracked row is the closer line `\`\`\`` at visualLine=2,
+    // not the docstring at visualLine=1. visualLine=99 clamps to
+    // start of closer row. Slice covers docstring + trailing \n.
+    // (Pre-fix this would have clamped to outerSource.length,
+    // returning everything from the docstring to end of fence.)
+    const result = toCopyText({ anchor, focus, transcript })
+    // The fence-stripping rule requires BOTH points inside [innerOffset, innerEnd];
+    // visualLine=99 → clamp to byte 38 (start of closer). innerEnd = 38
+    // (innerOffset 10 + innerSource.length 28). So 38 <= 38 is at the
+    // boundary — fence-stripping kicks in if `<= innerEnd`. Either way,
+    // the result must NOT include the closer ``` line.
+    expect(result).not.toContain('```')
+    // And it must contain the docstring content.
+    expect(result).toContain('packet says hi !!')
+  })
 })
