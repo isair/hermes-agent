@@ -1042,7 +1042,12 @@ def _get_env_config() -> Dict[str, Any]:
     # remote home, and everything else starts in the backend's default
     # root-like cwd.
     if env_type == "local":
-        default_cwd = os.getcwd()
+        try:
+            default_cwd = os.getcwd()
+        except FileNotFoundError:
+            # CWD was deleted (scratch workspace cleanup). Fall back to
+            # TERMINAL_CWD, home, or the workspace root.
+            default_cwd = os.getenv("TERMINAL_CWD", os.path.expanduser("~"))
     elif env_type == "ssh":
         default_cwd = "~"
     else:
