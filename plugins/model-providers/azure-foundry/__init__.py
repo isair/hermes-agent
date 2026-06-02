@@ -19,3 +19,9 @@ azure_foundry = ProviderProfile(
 )
 
 register_provider(azure_foundry)
+
+
+def register(ctx):
+    """Plugin entry point — delegates to the inner hermes_agent_azure package."""
+    from hermes_agent_azure import register as _inner_register
+    _inner_register(ctx)

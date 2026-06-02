@@ -10,6 +10,37 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+def _patch_tts_provider(mock_tts_fn=None, check_fn=None):
+    """Patch registries.get_tool_provider("tts") to return a mock provider.
+
+    The code resolves TTS via the plugin registry, not direct imports, so
+    patching the module-level function doesn't work.  This helper injects
+    a mock provider whose ``tool_functions["text_to_speech_tool"]`` is
+    *mock_tts_fn* so the code path in ``_voice_speak_response`` picks it up.
+
+    Returns a ``patch`` context-manager.
+    """
+    from agent.plugin_registries import ToolProviderEntry, registries
+
+    if mock_tts_fn is None:
+        mock_tts_fn = MagicMock(return_value='{"success": true}')
+
+    fake_provider = ToolProviderEntry(
+        name="tts",
+        tool_functions={"text_to_speech_tool": mock_tts_fn},
+        check_fn=check_fn,
+    )
+
+    orig = registries.get_tool_provider
+
+    def _fake_get(name):
+        if name == "tts":
+            return fake_provider
+        return orig(name)
+
+    return patch.object(registries, "get_tool_provider", _fake_get)
+
+
 def _make_voice_cli(**overrides):
     """Create a minimal HermesCLI with only voice-related attrs initialized.
 
@@ -42,7 +73,7 @@ def _make_voice_cli(**overrides):
 # Markdown stripping — import real function from tts_tool
 # ============================================================================
 
-from tools.tts_tool import _strip_markdown_for_tts
+from hermes_agent_tts import _strip_markdown_for_tts
 
 
 class TestMarkdownStripping:
@@ -183,7 +214,7 @@ class TestStreamingTTSActivation:
         and both lazy imports succeed."""
         use_streaming_tts = False
         try:
-            from tools.tts_tool import (
+            from hermes_agent_tts import (
                 _load_tts_config as _load_tts_cfg,
                 _get_provider as _get_prov,
                 _import_elevenlabs,
@@ -194,15 +225,15 @@ class TestStreamingTTSActivation:
         except ImportError:
             pytest.skip("tools.tts_tool not available")
 
-        with patch("tools.tts_tool._load_tts_config") as mock_cfg, \
-             patch("tools.tts_tool._get_provider", return_value="elevenlabs"), \
-             patch("tools.tts_tool._import_elevenlabs") as mock_el, \
-             patch("tools.tts_tool._import_sounddevice") as mock_sd:
+        with patch("hermes_agent_tts.tts_tool._load_tts_config") as mock_cfg, \
+             patch("hermes_agent_tts.tts_tool._get_provider", return_value="elevenlabs"), \
+             patch("hermes_agent_tts.tts_tool._import_elevenlabs") as mock_el, \
+             patch("hermes_agent_tts.tts_tool._import_sounddevice") as mock_sd:
             mock_cfg.return_value = {"provider": "elevenlabs"}
             mock_el.return_value = MagicMock()
             mock_sd.return_value = MagicMock()
 
-            from tools.tts_tool import (
+            from hermes_agent_tts import (
                 _load_tts_config as load_cfg,
                 _get_provider as get_prov,
                 _import_elevenlabs as import_el,
@@ -219,11 +250,11 @@ class TestStreamingTTSActivation:
     def test_does_not_activate_when_elevenlabs_missing(self):
         """use_streaming_tts stays False when elevenlabs import fails."""
         use_streaming_tts = False
-        with patch("tools.tts_tool._load_tts_config", return_value={"provider": "elevenlabs"}), \
-             patch("tools.tts_tool._get_provider", return_value="elevenlabs"), \
-             patch("tools.tts_tool._import_elevenlabs", side_effect=ImportError("no elevenlabs")):
+        with patch("hermes_agent_tts.tts_tool._load_tts_config", return_value={"provider": "elevenlabs"}), \
+             patch("hermes_agent_tts.tts_tool._get_provider", return_value="elevenlabs"), \
+             patch("hermes_agent_tts.tts_tool._import_elevenlabs", side_effect=ImportError("no elevenlabs")):
             try:
-                from tools.tts_tool import (
+                from hermes_agent_tts import (
                     _load_tts_config as load_cfg,
                     _get_provider as get_prov,
                     _import_elevenlabs as import_el,
@@ -242,12 +273,12 @@ class TestStreamingTTSActivation:
     def test_does_not_activate_when_sounddevice_missing(self):
         """use_streaming_tts stays False when sounddevice import fails."""
         use_streaming_tts = False
-        with patch("tools.tts_tool._load_tts_config", return_value={"provider": "elevenlabs"}), \
-             patch("tools.tts_tool._get_provider", return_value="elevenlabs"), \
-             patch("tools.tts_tool._import_elevenlabs", return_value=MagicMock()), \
-             patch("tools.tts_tool._import_sounddevice", side_effect=OSError("no PortAudio")):
+        with patch("hermes_agent_tts.tts_tool._load_tts_config", return_value={"provider": "elevenlabs"}), \
+             patch("hermes_agent_tts.tts_tool._get_provider", return_value="elevenlabs"), \
+             patch("hermes_agent_tts.tts_tool._import_elevenlabs", return_value=MagicMock()), \
+             patch("hermes_agent_tts.tts_tool._import_sounddevice", side_effect=OSError("no PortAudio")):
             try:
-                from tools.tts_tool import (
+                from hermes_agent_tts import (
                     _load_tts_config as load_cfg,
                     _get_provider as get_prov,
                     _import_elevenlabs as import_el,
@@ -266,10 +297,10 @@ class TestStreamingTTSActivation:
     def test_does_not_activate_for_non_elevenlabs_provider(self):
         """use_streaming_tts stays False when provider is not elevenlabs."""
         use_streaming_tts = False
-        with patch("tools.tts_tool._load_tts_config", return_value={"provider": "edge"}), \
-             patch("tools.tts_tool._get_provider", return_value="edge"):
+        with patch("hermes_agent_tts.tts_tool._load_tts_config", return_value={"provider": "edge"}), \
+             patch("hermes_agent_tts.tts_tool._get_provider", return_value="edge"):
             try:
-                from tools.tts_tool import (
+                from hermes_agent_tts import (
                     _load_tts_config as load_cfg,
                     _get_provider as get_prov,
                     _import_elevenlabs as import_el,
@@ -287,7 +318,7 @@ class TestStreamingTTSActivation:
 
     def test_stale_boolean_imports_no_longer_exist(self):
         """Confirm _HAS_ELEVENLABS and _HAS_AUDIO are not in tts_tool module."""
-        import tools.tts_tool as tts_mod
+        import hermes_agent_tts as tts_mod
         assert not hasattr(tts_mod, "_HAS_ELEVENLABS"), \
             "_HAS_ELEVENLABS should not exist -- lazy imports replaced it"
         assert not hasattr(tts_mod, "_HAS_AUDIO"), \
@@ -502,7 +533,7 @@ class TestEdgeTTSLazyImport:
         reference bare 'edge_tts' module name."""
         import ast as _ast
 
-        with open("tools/tts_tool.py") as f:
+        with open("plugins/tts/hermes_agent_tts/tts_tool.py") as f:
             tree = _ast.parse(f.read())
 
         for node in _ast.walk(tree):
@@ -540,7 +571,7 @@ class TestStreamingTTSOutputStreamCleanup:
         output_stream even on exception."""
         import ast as _ast
 
-        with open("tools/tts_tool.py") as f:
+        with open("plugins/tts/hermes_agent_tts/tts_tool.py") as f:
             tree = _ast.parse(f.read())
 
         for node in _ast.walk(tree):
@@ -1064,7 +1095,8 @@ class TestVoiceSpeakResponseReal:
     @patch("cli._cprint")
     def test_early_return_when_tts_off(self, _cp):
         cli = _make_voice_cli(_voice_tts=False)
-        with patch("tools.tts_tool.text_to_speech_tool") as mock_tts:
+        mock_tts = MagicMock()
+        with _patch_tts_provider(mock_tts_fn=mock_tts):
             cli._voice_speak_response("Hello")
             mock_tts.assert_not_called()
 
@@ -1074,10 +1106,11 @@ class TestVoiceSpeakResponseReal:
     @patch("cli.os.path.isfile", return_value=True)
     @patch("cli.os.makedirs")
     @patch("tools.voice_mode.play_audio_file")
-    @patch("tools.tts_tool.text_to_speech_tool", return_value='{"success": true}')
-    def test_markdown_stripped(self, mock_tts, _play, _mkd, _isf, _gsz, _unl, _cp):
+    def test_markdown_stripped(self, _play, _mkd, _isf, _gsz, _unl, _cp):
         cli = _make_voice_cli(_voice_tts=True)
-        cli._voice_speak_response("## Title\n**bold** and `code`")
+        mock_tts = MagicMock(return_value='{"success": true}')
+        with _patch_tts_provider(mock_tts_fn=mock_tts):
+            cli._voice_speak_response("## Title\n**bold** and `code`")
         call_text = mock_tts.call_args.kwargs["text"]
         assert "##" not in call_text
         assert "**" not in call_text
@@ -1085,10 +1118,11 @@ class TestVoiceSpeakResponseReal:
 
     @patch("cli._cprint")
     @patch("cli.os.makedirs")
-    @patch("tools.tts_tool.text_to_speech_tool", return_value='{"success": true}')
-    def test_code_blocks_removed(self, mock_tts, _mkd, _cp):
+    def test_code_blocks_removed(self, _mkd, _cp):
         cli = _make_voice_cli(_voice_tts=True)
-        cli._voice_speak_response("```python\nprint('hi')\n```\nSome text")
+        mock_tts = MagicMock(return_value='{"success": true}')
+        with _patch_tts_provider(mock_tts_fn=mock_tts):
+            cli._voice_speak_response("```python\nprint('hi')\n```\nSome text")
         call_text = mock_tts.call_args.kwargs["text"]
         assert "print" not in call_text
         assert "```" not in call_text
@@ -1098,26 +1132,29 @@ class TestVoiceSpeakResponseReal:
     @patch("cli.os.makedirs")
     def test_empty_after_strip_returns_early(self, _mkd, _cp):
         cli = _make_voice_cli(_voice_tts=True)
-        with patch("tools.tts_tool.text_to_speech_tool") as mock_tts:
+        mock_tts = MagicMock()
+        with _patch_tts_provider(mock_tts_fn=mock_tts):
             cli._voice_speak_response("```python\nprint('hi')\n```")
             mock_tts.assert_not_called()
 
     @patch("cli._cprint")
     @patch("cli.os.makedirs")
-    @patch("tools.tts_tool.text_to_speech_tool", return_value='{"success": true}')
-    def test_long_text_truncated(self, mock_tts, _mkd, _cp):
+    def test_long_text_truncated(self, _mkd, _cp):
         cli = _make_voice_cli(_voice_tts=True)
-        cli._voice_speak_response("A" * 5000)
+        mock_tts = MagicMock(return_value='{"success": true}')
+        with _patch_tts_provider(mock_tts_fn=mock_tts):
+            cli._voice_speak_response("A" * 5000)
         call_text = mock_tts.call_args.kwargs["text"]
         assert len(call_text) <= 4000
 
     @patch("cli._cprint")
     @patch("cli.os.makedirs")
-    @patch("tools.tts_tool.text_to_speech_tool", side_effect=RuntimeError("tts fail"))
-    def test_exception_sets_done_event(self, _tts, _mkd, _cp):
+    def test_exception_sets_done_event(self, _mkd, _cp):
         cli = _make_voice_cli(_voice_tts=True)
-        cli._voice_tts_done.clear()
-        cli._voice_speak_response("Hello")
+        mock_tts = MagicMock(side_effect=RuntimeError("tts fail"))
+        with _patch_tts_provider(mock_tts_fn=mock_tts):
+            cli._voice_tts_done.clear()
+            cli._voice_speak_response("Hello")
         assert cli._voice_tts_done.is_set()
 
     @patch("cli._cprint")
@@ -1126,10 +1163,10 @@ class TestVoiceSpeakResponseReal:
     @patch("cli.os.path.isfile", return_value=True)
     @patch("cli.os.makedirs")
     @patch("tools.voice_mode.play_audio_file")
-    @patch("tools.tts_tool.text_to_speech_tool", return_value='{"success": true}')
-    def test_play_audio_called(self, _tts, mock_play, _mkd, _isf, _gsz, _unl, _cp):
+    def test_play_audio_called(self, mock_play, _mkd, _isf, _gsz, _unl, _cp):
         cli = _make_voice_cli(_voice_tts=True)
-        cli._voice_speak_response("Hello world")
+        with _patch_tts_provider():
+            cli._voice_speak_response("Hello world")
         mock_play.assert_called_once()
 
 

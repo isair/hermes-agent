@@ -76,10 +76,11 @@ def test_resolve_runtime_provider_anthropic_explicit_override_skips_pool(monkeyp
         },
     )
     monkeypatch.setattr(rp, "load_pool", _unexpected_pool)
-    monkeypatch.setattr(
-        "agent.anthropic_adapter.resolve_anthropic_token",
-        _unexpected_anthropic_token,
-    )
+    from agent.plugin_registries import registries
+    _orig = registries._provider_services.get("anthropic", {})
+    _patched = dict(_orig)
+    _patched["resolve_anthropic_token"] = _unexpected_anthropic_token
+    monkeypatch.setitem(registries._provider_services, "anthropic", _patched)
 
     resolved = rp.resolve_runtime_provider(
         requested="anthropic",
@@ -2148,10 +2149,11 @@ class TestAzureAnthropicEnvVarHint:
         def _fake_resolve():
             called["resolve_anthropic_token"] = True
             return "token-from-resolver"
-        monkeypatch.setattr(
-            "agent.anthropic_adapter.resolve_anthropic_token",
-            _fake_resolve,
-        )
+        from agent.plugin_registries import registries
+        _orig = registries._provider_services.get("anthropic", {})
+        _patched = dict(_orig)
+        _patched["resolve_anthropic_token"] = _fake_resolve
+        monkeypatch.setitem(registries._provider_services, "anthropic", _patched)
 
         resolved = rp.resolve_runtime_provider(requested="anthropic")
 

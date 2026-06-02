@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-agent-dingtalk"
+version = "0.1.0"
+description = "DingTalk platform adapter for Hermes Agent"
+requires-python = ">=3.11"
+dependencies = [
+    "hermes-agent",
+    "dingtalk-stream==0.24.3",
+    "alibabacloud-dingtalk==2.2.42",
+    "qrcode==7.4.2",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+dingtalk = "hermes_agent_dingtalk:register"
+
+[tool.setuptools.packages.find]
+include = ["hermes_agent_dingtalk*"]

@@ -1206,21 +1206,6 @@ class AIAgent:
             return {"max_completion_tokens": value}
         return {"max_tokens": value}
 
-    @staticmethod
-    def _requested_output_cap_from_api_kwargs(api_kwargs: Any) -> Optional[int]:
-        """Extract the outgoing response token cap from a prepared request."""
-        if not isinstance(api_kwargs, dict):
-            return None
-        for key in ("max_output_tokens", "max_completion_tokens", "max_tokens"):
-            raw = api_kwargs.get(key)
-            try:
-                value = int(raw)
-            except (TypeError, ValueError):
-                continue
-            if value > 0:
-                return value
-        return None
-
     def _has_content_after_think_block(self, content: str) -> bool:
         """
         Check if content has actual text after any reasoning/thinking blocks.
@@ -1661,63 +1646,6 @@ class AIAgent:
         return False
 
     @staticmethod
-    def _decorate_xai_entitlement_error(detail: str) -> str:
-        """Append a neutral hint when xAI's OAuth surface returns the
-        permission-denied 403.
-
-        xAI's ``/v1/responses`` endpoint replies to several distinct failure
-        modes with the SAME body::
-
-            {"code": "The caller does not have permission to execute the
-             specified operation", "error": "You have either run out of
-             available resources or do not have an active Grok subscription.
-             Manage subscriptions at https://grok.com/?_s=usage or subscribe
-             at https://grok.com/supergrok"}
-
-        That body covers several real causes we cannot distinguish without
-        more info from xAI.  The most common (and least obvious) one is
-        that **X Premium+ does NOT include API access** — only standalone
-        SuperGrok subscribers can use Hermes against xai-oauth.  Lots of
-        users see Grok in their X app, assume it works here too, and hit
-        this 403 with no idea why.  Lead the hint with that.
-
-        Other possible causes:
-          * No Grok subscription at all
-          * SuperGrok tier doesn't include the requested model (e.g.
-            grok-4.3 may need a higher tier)
-          * Monthly quota exhausted (the ``?_s=usage`` URL hints at this)
-
-        Surface the raw xAI text verbatim and point at
-        https://grok.com/?_s=usage where the user can see WHICH applies.
-
-        Matched once per detail string — won't double-decorate if the
-        upstream already concatenated the same text.
-        """
-        if not detail:
-            return detail
-        lower = detail.lower()
-        is_entitlement = (
-            "do not have an active grok subscription" in lower
-            or ("out of available resources" in lower and "grok" in lower)
-            or ("does not have permission" in lower and "grok" in lower)
-        )
-        if not is_entitlement:
-            return detail
-        hint = (
-            " — xAI rejected this OAuth account. NOTE: X Premium+ does NOT "
-            "include xAI API access — only standalone SuperGrok subscribers "
-            "can use this provider. Other possible causes: no Grok "
-            "subscription, your tier doesn't include this model, or your "
-            "quota is exhausted. Check https://grok.com/?_s=usage to see "
-            "which, or run `/model` to switch providers."
-        )
-        # Idempotency: detect prior decoration by a substring unique to the
-        # hint (not present in xAI's own body text).
-        if "X Premium+ does NOT include" in detail:
-            return detail
-        return f"{detail}{hint}"
-
-    @staticmethod
     def _summarize_api_error(error: Exception) -> str:
         """Extract a human-readable one-liner from an API error.
 
@@ -1756,12 +1684,12 @@ class AIAgent:
             if msg:
                 status_code = getattr(error, "status_code", None)
                 prefix = f"HTTP {status_code}: " if status_code else ""
-                return AIAgent._decorate_xai_entitlement_error(f"{prefix}{msg[:300]}")
+                return f"{prefix}{msg[:300]}"
 
         # Fallback: truncate the raw string but give more room than 200 chars
         status_code = getattr(error, "status_code", None)
         prefix = f"HTTP {status_code}: " if status_code else ""
-        return AIAgent._decorate_xai_entitlement_error(f"{prefix}{raw[:500]}")
+        return f"{prefix}{raw[:500]}"
 
     def _mask_api_key_for_logs(self, key: Any) -> Optional[str]:
         # Azure Foundry Entra ID bearer providers are callables — never
@@ -3312,7 +3240,12 @@ class AIAgent:
             return False
 
         try:
-            from agent.anthropic_adapter import resolve_anthropic_token, build_anthropic_client
+            from agent.plugin_registries import registries
+            _anthropic = registries.get_provider_namespace("anthropic")
+            resolve_anthropic_token = _anthropic.get("resolve_anthropic_token")
+            build_anthropic_client = _anthropic.get("build_anthropic_client")
+            if resolve_anthropic_token is None or build_anthropic_client is None:
+                raise ImportError("anthropic plugin not registered")
 
             new_token = resolve_anthropic_token()
         except Exception as exc:
@@ -3345,8 +3278,9 @@ class AIAgent:
         # Only treat as OAuth on native Anthropic; third-party endpoints using
         # the Anthropic protocol must not trip OAuth paths (#1739 & third-party
         # identity-injection guard).
-        from agent.anthropic_adapter import _is_oauth_token
-        self._is_anthropic_oauth = _is_oauth_token(new_token) if self.provider == "anthropic" else False
+        _anthropic = registries.get_provider_namespace("anthropic")
+        _is_oauth_token = _anthropic.get("_is_oauth_token")
+        self._is_anthropic_oauth = _is_oauth_token(new_token) if (_is_oauth_token is not None and self.provider == "anthropic") else False
         return True
 
     def _apply_client_headers_for_base_url(self, base_url: str) -> None:
@@ -3394,7 +3328,12 @@ class AIAgent:
         runtime_base = getattr(entry, "runtime_base_url", None) or getattr(entry, "base_url", None) or self.base_url
 
         if self.api_mode == "anthropic_messages":
-            from agent.anthropic_adapter import build_anthropic_client, _is_oauth_token
+            from agent.plugin_registries import registries
+            _anthropic = registries.get_provider_namespace("anthropic")
+            build_anthropic_client = _anthropic.get("build_anthropic_client")
+            _is_oauth_token = _anthropic.get("_is_oauth_token")
+            if build_anthropic_client is None or _is_oauth_token is None:
+                raise ImportError("anthropic plugin not registered")
 
             try:
                 self._anthropic_client.close()
@@ -3463,13 +3402,19 @@ class AIAgent:
         path when an OAuth subscription rejects the 1M-context beta) so the
         rebuilt client carries the reduced beta set.
         """
+        from agent.plugin_registries import registries
+        _anthropic = registries.get_provider_namespace("anthropic")
         _drop_1m = bool(getattr(self, "_oauth_1m_beta_disabled", False))
         if getattr(self, "provider", None) == "bedrock":
-            from agent.anthropic_adapter import build_anthropic_bedrock_client
+            build_anthropic_bedrock_client = _anthropic.get("build_anthropic_bedrock_client")
+            if build_anthropic_bedrock_client is None:
+                raise ImportError("anthropic plugin not registered")
             region = getattr(self, "_bedrock_region", "us-east-1") or "us-east-1"
             self._anthropic_client = build_anthropic_bedrock_client(region)
         else:
-            from agent.anthropic_adapter import build_anthropic_client
+            build_anthropic_client = _anthropic.get("build_anthropic_client")
+            if build_anthropic_client is None:
+                raise ImportError("anthropic plugin not registered")
             self._anthropic_client = build_anthropic_client(
                 self._anthropic_api_key,
                 getattr(self, "_anthropic_base_url", None),

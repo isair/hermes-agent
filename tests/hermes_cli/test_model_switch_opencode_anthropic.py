@@ -231,17 +231,19 @@ class TestAgentSwitchModelDefenseInDepth:
             captured["base_url"] = base_url
             raise _Sentinel("strip verified")
 
-        with patch(
-            "agent.anthropic_adapter.build_anthropic_client",
-            side_effect=_raise_after_capture,
-        ), patch("agent.anthropic_adapter.resolve_anthropic_token", return_value=""), patch(
-            "agent.anthropic_adapter._is_oauth_token", return_value=False
-        ):
+        from agent.plugin_registries import registries
+
+        fake_anthropic_ns = {
+            "build_anthropic_client": _raise_after_capture,
+            "resolve_anthropic_token": lambda *a, **kw: "",
+            "_is_oauth_token": lambda *a, **kw: False,
+        }
+        with patch.dict(registries._provider_services, {"anthropic": fake_anthropic_ns}):
             with pytest.raises(_Sentinel):
                 agent.switch_model(
                     new_model="minimax-m2.7",
                     new_provider="opencode-go",
-                    api_key="sk-opencode-fake",
+                    api_key="***",
                     base_url="https://opencode.ai/zen/go/v1",
                     api_mode="anthropic_messages",
                 )

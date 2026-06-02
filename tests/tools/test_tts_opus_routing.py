@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import pytest
 
 from gateway.session_context import _UNSET, _VAR_MAP
-from tools import tts_tool
+from hermes_agent_tts import tts_tool
 
 
 def _reset_session_context() -> None:

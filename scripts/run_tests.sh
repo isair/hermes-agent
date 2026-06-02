@@ -24,11 +24,11 @@
 #
 # Everything after a literal '--' is passed through to each per-file
 # pytest invocation. Positional path arguments before '--' override
-# the default discovery root (tests/).
+#   the default discovery root (tests/ + plugins/).
 
 set -euo pipefail
 
-# ── Locate repo root ────────────────────────────────────────────────────────
+# ── Locate repo root ────────────────────────────────────────────────────────l
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 

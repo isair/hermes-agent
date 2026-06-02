@@ -13,7 +13,7 @@ def test_prompt_model_selection_uses_curses_radiolist():
 
     seen = {}
 
-    def _fake(title, items, *, selected=0, cancel_returns=None, description=None, searchable=False):
+    def _fake(title, items, *, selected=0, cancel_returns=None, description=None):
         seen["title"] = title
         seen["items"] = items
         return 1  # pick second model
@@ -67,7 +67,7 @@ def test_model_selection_with_pricing_passes_description():
 
     seen = {}
 
-    def _fake(title, items, *, selected=0, cancel_returns=None, description=None, searchable=False):
+    def _fake(title, items, *, selected=0, cancel_returns=None, description=None):
         seen["description"] = description
         return len(items) - 1  # Skip
 

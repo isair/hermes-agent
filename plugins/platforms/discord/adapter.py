@@ -108,7 +108,7 @@ def _clean_discord_id(entry: str) -> str:
 def check_discord_requirements() -> bool:
     """Check if Discord dependencies are available.
 
-    Lazy-installs discord.py via ``tools.lazy_deps.ensure("platform.discord")``
+    Discord deps are installed via the hermes-agent-discord package
     on first call if not present. After successful install, re-binds module
     globals so ``DISCORD_AVAILABLE`` becomes True.
     """
@@ -116,8 +116,9 @@ def check_discord_requirements() -> bool:
     if DISCORD_AVAILABLE:
         return True
     try:
-        from tools.lazy_deps import ensure as _lazy_ensure
-        _lazy_ensure("platform.discord", prompt=False)
+        import discord as _discord
+        from discord import Message as _DM, Intents as _Intents
+        from discord.ext import commands as _commands
     except Exception:
         return False
     try:
@@ -2199,7 +2200,7 @@ class DiscordAdapter(BasePlatformAdapter):
         try:
             await asyncio.to_thread(VoiceReceiver.pcm_to_wav, pcm_data, wav_path)
 
-            from tools.transcription_tools import transcribe_audio
+            from hermes_agent_stt.transcription_tools import transcribe_audio
             result = await asyncio.to_thread(transcribe_audio, wav_path)
 
             if not result.get("success"):

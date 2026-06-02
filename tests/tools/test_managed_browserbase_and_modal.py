@@ -470,7 +470,7 @@ def test_terminal_tool_prefers_managed_modal_when_gateway_ready_and_no_direct_cr
         with (
             patch.object(terminal_tool, "is_managed_tool_gateway_ready", return_value=True),
             patch.object(terminal_tool, "_ManagedModalEnvironment", return_value="managed-modal-env") as managed_ctor,
-            patch.object(terminal_tool, "_ModalEnvironment", return_value="direct-modal-env") as direct_ctor,
+            patch.object(terminal_tool, "_get_modal_environment_class", return_value=(lambda *a, **kw: "direct-modal-env")) as direct_ctor,
             patch.object(Path, "exists", return_value=False),
         ):
             result = terminal_tool._create_environment(
@@ -507,7 +507,7 @@ def test_terminal_tool_auto_mode_prefers_managed_modal_when_available():
         with (
             patch.object(terminal_tool, "is_managed_tool_gateway_ready", return_value=True),
             patch.object(terminal_tool, "_ManagedModalEnvironment", return_value="managed-modal-env") as managed_ctor,
-            patch.object(terminal_tool, "_ModalEnvironment", return_value="direct-modal-env") as direct_ctor,
+            patch.object(terminal_tool, "_get_modal_environment_class", return_value=(lambda *a, **kw: "direct-modal-env")) as direct_ctor,
         ):
             result = terminal_tool._create_environment(
                 env_type="modal",
@@ -543,7 +543,7 @@ def test_terminal_tool_auto_mode_falls_back_to_direct_modal_when_managed_unavail
         with (
             patch.object(terminal_tool, "is_managed_tool_gateway_ready", return_value=False),
             patch.object(terminal_tool, "_ManagedModalEnvironment", return_value="managed-modal-env") as managed_ctor,
-            patch.object(terminal_tool, "_ModalEnvironment", return_value="direct-modal-env") as direct_ctor,
+            patch.object(terminal_tool, "_get_modal_environment_class", return_value=(lambda *a, **kw: "direct-modal-env")) as direct_ctor,
         ):
             result = terminal_tool._create_environment(
                 env_type="modal",

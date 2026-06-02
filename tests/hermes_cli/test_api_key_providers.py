@@ -299,7 +299,7 @@ class TestResolveProvider:
         # the specific "GitHub token alone shouldn't auto-pick copilot"
         # behavior, not the Bedrock fallback.
         monkeypatch.setattr(
-            "agent.bedrock_adapter.has_aws_credentials",
+            "hermes_agent_bedrock.adapter.has_aws_credentials",
             lambda env=None: False,
         )
         monkeypatch.setenv("GITHUB_TOKEN", "gh-test-token")
@@ -725,6 +725,7 @@ class TestHasAnyProviderConfigured:
         """Claude Code credentials should NOT skip the wizard when Hermes is unconfigured."""
         from hermes_cli import config as config_module
         from hermes_cli.auth import PROVIDER_REGISTRY
+        from agent.plugin_registries import registries
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
         monkeypatch.setattr(config_module, "get_env_path", lambda: hermes_home / ".env")
@@ -740,15 +741,12 @@ class TestHasAnyProviderConfigured:
             monkeypatch.delenv(var, raising=False)
         # Prevent gh-cli / copilot auth fallback from leaking in
         monkeypatch.setattr("hermes_cli.auth.get_auth_status", lambda _pid: {})
-        # Simulate valid Claude Code credentials
-        monkeypatch.setattr(
-            "agent.anthropic_adapter.read_claude_code_credentials",
-            lambda: {"accessToken": "sk-ant-test", "refreshToken": "ref-tok"},
-        )
-        monkeypatch.setattr(
-            "agent.anthropic_adapter.is_claude_code_token_valid",
-            lambda creds: True,
-        )
+        # Simulate valid Claude Code credentials via registry mock
+        _orig = registries._provider_services.get("anthropic", {})
+        _patched = dict(_orig)
+        _patched["read_claude_code_credentials"] = lambda: {"accessToken": "sk-ant-test", "refreshToken": "ref-tok"}
+        _patched["is_claude_code_token_valid"] = lambda creds: True
+        monkeypatch.setitem(registries._provider_services, "anthropic", _patched)
         from hermes_cli.main import _has_any_provider_configured
         assert _has_any_provider_configured() is False
 
@@ -841,6 +839,7 @@ class TestHasAnyProviderConfigured:
         """Claude Code credentials should count when Hermes has been explicitly configured."""
         import yaml
         from hermes_cli import config as config_module
+        from agent.plugin_registries import registries
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
         # Write a config with a non-default model to simulate explicit configuration
@@ -853,15 +852,12 @@ class TestHasAnyProviderConfigured:
         for var in ("OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
                      "ANTHROPIC_TOKEN", "OPENAI_BASE_URL"):
             monkeypatch.delenv(var, raising=False)
-        # Simulate valid Claude Code credentials
-        monkeypatch.setattr(
-            "agent.anthropic_adapter.read_claude_code_credentials",
-            lambda: {"accessToken": "sk-ant-test", "refreshToken": "ref-tok"},
-        )
-        monkeypatch.setattr(
-            "agent.anthropic_adapter.is_claude_code_token_valid",
-            lambda creds: True,
-        )
+        # Simulate valid Claude Code credentials via registry mock
+        _orig = registries._provider_services.get("anthropic", {})
+        _patched = dict(_orig)
+        _patched["read_claude_code_credentials"] = lambda: {"accessToken": "sk-ant-test", "refreshToken": "ref-tok"}
+        _patched["is_claude_code_token_valid"] = lambda creds: True
+        monkeypatch.setitem(registries._provider_services, "anthropic", _patched)
         from hermes_cli.main import _has_any_provider_configured
         assert _has_any_provider_configured() is True
 

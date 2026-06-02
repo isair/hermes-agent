@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-agent-feishu"
+version = "0.1.0"
+description = "Feishu/Lark platform adapter for Hermes Agent"
+requires-python = ">=3.11"
+dependencies = [
+    "hermes-agent",
+    "lark-oapi==1.5.3",
+    "qrcode==7.4.2",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+feishu = "hermes_agent_feishu:register"
+
+[tool.setuptools.packages.find]
+include = ["hermes_agent_feishu*"]

@@ -47,14 +47,12 @@ def _ensure_parallel_sdk_installed() -> None:
     """Trigger lazy install of the parallel SDK if it isn't present.
 
     Mirrors the lazy-deps pattern used by the legacy implementation.
-    Swallows benign ImportError from the lazy_deps helper itself; if the
+    Swallows ImportError when the SDK is not installed
     SDK is genuinely missing the subsequent ``from parallel import ...``
     raises ImportError that the caller can handle.
     """
     try:
-        from tools.lazy_deps import ensure as _lazy_ensure
-
-        _lazy_ensure("search.parallel", prompt=False)
+        from parallel import Parallel  # noqa: WPS433 — deliberately lazy
     except ImportError:
         pass
     except Exception as exc:  # noqa: BLE001 — surface install hint as ImportError

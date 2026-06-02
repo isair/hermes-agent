@@ -4,10 +4,41 @@ import os
 import struct
 import time
 import wave
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+
+def _patch_stt_provider(
+    *,
+    transcribe_audio=None,
+    _get_provider=None,
+    _load_stt_config=None,
+    is_stt_enabled=None,
+    max_file_size=25 * 1024 * 1024,
+):
+    """Patch registries.get_tool_provider("stt") to return a mock provider.
+
+    The code resolves STT via the plugin registry (not direct imports), so
+    patching ``hermes_agent_stt.transcription_tools.*`` has no effect.
+    This helper patches the registry to return a provider with the specified
+    functions, defaulting no-ops / sensible returns for anything not provided.
+    """
+    from agent.plugin_registries import registries, ToolProviderEntry
+
+    mock_provider = ToolProviderEntry(
+        name="stt",
+        tool_functions={"transcribe_audio": transcribe_audio or MagicMock()},
+        config_functions={
+            "_get_provider": _get_provider or (lambda _cfg=None: "openai"),
+            "_load_stt_config": _load_stt_config or (lambda: {}),
+            "is_stt_enabled": is_stt_enabled or (lambda _cfg=None: True),
+        },
+        constants={"MAX_FILE_SIZE": max_file_size},
+    )
+    return patch.object(registries, "get_tool_provider", return_value=mock_provider)
 
 
 def _non_wsl_proc_version(real_open):
@@ -447,7 +478,13 @@ class TestCheckVoiceRequirements:
         monkeypatch.setattr("tools.voice_mode._termux_microphone_command", lambda: "/data/data/com.termux/files/usr/bin/termux-microphone-record")
         monkeypatch.setattr("tools.voice_mode._termux_api_app_installed", lambda: True)
         monkeypatch.setattr("tools.voice_mode.detect_audio_environment", lambda: {"available": True, "warnings": [], "notices": ["Termux:API microphone recording available"]})
-        monkeypatch.setattr("tools.transcription_tools._get_provider", lambda cfg: "openai")
+        monkeypatch.setattr("hermes_agent_stt.transcription_tools._get_provider", lambda cfg: "openai")
+        # Mock the registry so voice_mode can find the stt provider
+        from unittest.mock import MagicMock
+        from agent.plugin_registries import registries
+        mock_stt = MagicMock()
+        mock_stt.config_functions = {"_get_provider": lambda cfg: "openai", "_load_stt_config": lambda: {}, "is_stt_enabled": lambda cfg=None: True}
+        monkeypatch.setattr(registries, "get_tool_provider", lambda name: mock_stt if name == "stt" else None)
 
         from tools.voice_mode import check_voice_requirements
         result = check_voice_requirements()
@@ -461,11 +498,11 @@ class TestCheckVoiceRequirements:
         monkeypatch.setattr("tools.voice_mode._audio_available", lambda: True)
         monkeypatch.setattr("tools.voice_mode.detect_audio_environment",
                             lambda: {"available": True, "warnings": []})
-        monkeypatch.setattr("tools.transcription_tools._get_provider", lambda cfg: "openai")
 
-        from tools.voice_mode import check_voice_requirements
+        with _patch_stt_provider(_get_provider=lambda _cfg=None: "openai", is_stt_enabled=lambda _cfg=None: True):
+            from tools.voice_mode import check_voice_requirements
 
-        result = check_voice_requirements()
+            result = check_voice_requirements()
         assert result["available"] is True
         assert result["audio_available"] is True
         assert result["stt_available"] is True
@@ -489,11 +526,11 @@ class TestCheckVoiceRequirements:
         monkeypatch.setattr("tools.voice_mode._audio_available", lambda: True)
         monkeypatch.setattr("tools.voice_mode.detect_audio_environment",
                             lambda: {"available": True, "warnings": []})
-        monkeypatch.setattr("tools.transcription_tools._get_provider", lambda cfg: "none")
 
-        from tools.voice_mode import check_voice_requirements
+        with _patch_stt_provider(_get_provider=lambda _cfg=None: "none", is_stt_enabled=lambda _cfg=None: True):
+            from tools.voice_mode import check_voice_requirements
 
-        result = check_voice_requirements()
+            result = check_voice_requirements()
         assert result["available"] is False
         assert result["stt_available"] is False
         assert "STT provider: MISSING" in result["details"]
@@ -754,7 +791,7 @@ class TestTranscribeRecording:
             "transcript": "hello world",
         })
 
-        with patch("tools.transcription_tools.transcribe_audio", mock_transcribe):
+        with _patch_stt_provider(transcribe_audio=mock_transcribe):
             from tools.voice_mode import transcribe_recording
             result = transcribe_recording("/tmp/test.wav", model="whisper-1")
 
@@ -768,7 +805,7 @@ class TestTranscribeRecording:
             "transcript": "Thank you.",
         })
 
-        with patch("tools.transcription_tools.transcribe_audio", mock_transcribe):
+        with _patch_stt_provider(transcribe_audio=mock_transcribe):
             from tools.voice_mode import transcribe_recording
             result = transcribe_recording("/tmp/test.wav")
 
@@ -782,7 +819,7 @@ class TestTranscribeRecording:
             "transcript": "Thank you for helping me with this code.",
         })
 
-        with patch("tools.transcription_tools.transcribe_audio", mock_transcribe):
+        with _patch_stt_provider(transcribe_audio=mock_transcribe):
             from tools.voice_mode import transcribe_recording
             result = transcribe_recording("/tmp/test.wav")
 
@@ -802,7 +839,7 @@ class TestTranscribeRecording:
         temp_dir = tmp_path / "chunks"
         temp_dir.mkdir()
         monkeypatch.setattr("tools.voice_mode._TEMP_DIR", str(temp_dir))
-        monkeypatch.setattr("tools.transcription_tools.MAX_FILE_SIZE", 70 * 1024)
+        monkeypatch.setattr("hermes_agent_stt.transcription_tools.MAX_FILE_SIZE", 70 * 1024)
 
         seen_paths = []
 
@@ -817,7 +854,7 @@ class TestTranscribeRecording:
                 "provider": "local",
             }
 
-        with patch("tools.transcription_tools.transcribe_audio", side_effect=fake_transcribe):
+        with _patch_stt_provider(transcribe_audio=MagicMock(side_effect=fake_transcribe), max_file_size=70 * 1024):
             from tools.voice_mode import transcribe_recording
             result = transcribe_recording(str(wav_path), model="base")
 
@@ -842,12 +879,12 @@ class TestTranscribeRecording:
         temp_dir = tmp_path / "chunks"
         temp_dir.mkdir()
         monkeypatch.setattr("tools.voice_mode._TEMP_DIR", str(temp_dir))
-        monkeypatch.setattr("tools.transcription_tools.MAX_FILE_SIZE", 70 * 1024)
+        monkeypatch.setattr("hermes_agent_stt.transcription_tools.MAX_FILE_SIZE", 70 * 1024)
 
         def fake_transcribe(path, model=None):
             return {"success": False, "transcript": "", "error": "provider rejected audio"}
 
-        with patch("tools.transcription_tools.transcribe_audio", side_effect=fake_transcribe):
+        with _patch_stt_provider(transcribe_audio=MagicMock(side_effect=fake_transcribe), max_file_size=70 * 1024):
             from tools.voice_mode import transcribe_recording
             result = transcribe_recording(str(wav_path), model="base")
 

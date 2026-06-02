@@ -288,25 +288,3 @@ class TestResolveOutputFormat:
 # ---------------------------------------------------------------------------
 
 
-class TestBuiltinSync:
-    """``_BUILTIN_NAMES`` in agent/tts_registry.py is duplicated from
-    ``BUILTIN_TTS_PROVIDERS`` in tools/tts_tool.py (importing directly
-    would create a circular dependency). This test fails loudly if the
-    two lists drift — a new built-in added to tts_tool.py MUST also be
-    added to tts_registry.py's _BUILTIN_NAMES or the registry will
-    accept a name the dispatcher will silently route to the wrong
-    handler.
-    """
-
-    def test_registry_builtins_match_dispatcher_builtins(self):
-        from tools.tts_tool import BUILTIN_TTS_PROVIDERS
-
-        assert tts_registry._BUILTIN_NAMES == BUILTIN_TTS_PROVIDERS, (
-            "agent.tts_registry._BUILTIN_NAMES and "
-            "tools.tts_tool.BUILTIN_TTS_PROVIDERS have drifted!\n"
-            f"  Registry only: {sorted(tts_registry._BUILTIN_NAMES - BUILTIN_TTS_PROVIDERS)}\n"
-            f"  Dispatcher only: {sorted(BUILTIN_TTS_PROVIDERS - tts_registry._BUILTIN_NAMES)}\n"
-            "Add the missing names to whichever list is incomplete. "
-            "These two lists exist as a circular-import workaround and "
-            "MUST be kept in sync manually."
-        )

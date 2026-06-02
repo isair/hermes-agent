@@ -163,9 +163,12 @@ def test_dockerfile_preinstalls_gateway_messaging_dependencies(dockerfile_text):
     ]
 
     assert sync_steps, "Dockerfile must install Python dependencies with uv sync"
-    assert any("--extra messaging" in step for step in sync_steps), (
-        "Published Docker images must preload the [messaging] extra so "
-        "Telegram/Discord gateway adapters do not depend on first-boot "
+    # The [messaging] extra was removed during pluginify — its contents
+    # (telegram, slack, discord, feishu, dingtalk) are now included via
+    # the [all] extra, which references the workspace member plugin packages.
+    assert any("--extra all" in step for step in sync_steps), (
+        "Published Docker images must preload the [all] extra so "
+        "Telegram/Discord/Slack gateway adapters do not depend on first-boot "
         "lazy installation (#24698)."
     )
 

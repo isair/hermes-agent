@@ -122,7 +122,7 @@ try:
 except ImportError:
     pass
 
-import tools.tts_tool as tts_tool
+import hermes_agent_tts as tts_tool
 
 # Read the config the same way text_to_speech_tool() does.
 tts_config = tts_tool._load_tts_config()

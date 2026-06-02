@@ -1,7 +1,7 @@
 ---
 sidebar_position: 2
 title: "安装"
-description: "在 Linux、macOS、WSL2、原生 Windows 或通过 Termux 在 Android 上安装 Hermes Agent"
+description: "在 Linux、macOS、WSL2、原生 Windows（早期 Beta）或通过 Termux 在 Android 上安装 Hermes Agent"
 ---
 
 # 安装
@@ -18,9 +18,11 @@ description: "在 Linux、macOS、WSL2、原生 Windows 或通过 Termux 在 And
 curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
 ```
 
-### Windows（原生，PowerShell）
+### Windows（原生，PowerShell）— 早期 Beta
 
-原生 Windows 无需 WSL 即可运行 Hermes——CLI、gateway、TUI 和工具均可原生运行。（原生安装与 WSL2 安装可干净共存；唯一仅限 WSL2 的功能见下方功能说明。）遇到 bug 请[提交 issue](https://github.com/NousResearch/hermes-agent/issues)。
+:::warning 早期 BETA
+原生 Windows 支持处于**早期 beta** 阶段。常见路径下可正常安装和运行，但尚未像我们的 POSIX 安装程序那样经过广泛测试。遇到问题请[提交 issue](https://github.com/NousResearch/hermes-agent/issues)。目前在 Windows 上最稳定的方案是在 **WSL2** 内使用上方的 Linux/macOS 一行命令。
+:::
 
 打开 PowerShell 并运行：
 
@@ -59,9 +61,9 @@ curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scri
 
 如需完整的显式步骤，请参阅专门的 [Termux 指南](./termux.md)。
 
-:::note Windows 功能对等性
+:::note Windows 功能对等性（早期 Beta）
 
-除基于浏览器的 dashboard 聊天终端外，其余功能均可在 Windows 上原生运行：
+原生 Windows 处于**早期 beta** 阶段。除基于浏览器的 dashboard 聊天终端外，其余功能均可在 Windows 上原生运行：
 - **CLI（`hermes chat`、`hermes setup`、`hermes gateway` 等）** — 原生，使用默认终端
 - **Gateway（Telegram、Discord、Slack 等）** — 原生，作为后台 PowerShell 进程运行
 - **Cron 调度器** — 原生

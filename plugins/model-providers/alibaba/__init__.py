@@ -11,3 +11,9 @@ alibaba = ProviderProfile(
 )
 
 register_provider(alibaba)
+
+
+def register(ctx):
+    """No-op — this provider has no workspace package yet."""
+    pass
+

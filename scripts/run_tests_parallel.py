@@ -30,7 +30,7 @@ Usage:
 
 Environment:
     HERMES_TEST_WORKERS  Override worker count (default: os.cpu_count())
-    HERMES_TEST_PATHS    Override discovery roots (colon-sep, default: 'tests')
+    HERMES_TEST_PATHS    Override discovery roots (colon-sep, default: 'tests:plugins')
 
 Exit code: 0 if every file's pytest exited 0; 1 otherwise.
 """
@@ -50,7 +50,7 @@ from typing import Dict, List, Tuple
 
 
 # Default test discovery roots.
-_DEFAULT_ROOTS = ["tests"]
+_DEFAULT_ROOTS = ["tests", "plugins"]
 
 # Directories to skip during discovery — these suites require real
 # external services (a model gateway, a docker daemon with a prebuilt
@@ -286,6 +286,7 @@ def _run_one_file(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        env={**os.environ, "HERMES_PARALLEL_RUNNER": "1"},
         # POSIX: place the child at the head of its own process group so
         # _kill_tree can SIGKILL the group atomically.
         # Windows: this maps to CREATE_NEW_PROCESS_GROUP in CPython 3.12+;
@@ -794,7 +795,6 @@ def main() -> int:
     elapsed = time.monotonic() - started
     print()
     pct = (tests_done / total_tests * 100) if total_tests else 0
-    print(f"=== Summary: {len(files)} files, {tests_passed} tests passed, {tests_failed} failed ({pct:.0f}% complete) in {elapsed:.1f}s ({args.jobs} workers) ===")
 
     # Save durations for future --slice runs. Each slice writes its own
     # partial test_durations.json; a CI merge step joins them later.
@@ -832,13 +832,9 @@ def main() -> int:
 
     if failures:
         print()
-        print("=== Failure output ===")
-        for file, output, _summary in failures:
-            print()
-            print(f"--- {_format_file(file, repo_root)} ---")
-            print(output.rstrip())
-        print()
         # Split: files with actual test failures vs non-zero exit for other reasons
+        # Build a lookup so we can surface error details from captured output.
+        output_by_file = {f: o for f, o, _s in failures}
         test_fail_files = [(f, s) for f, _o, s in failures if s.get("failed", 0) > 0]
         all_passed_but_nonzero = [(f, s) for f, _o, s in failures
                                   if s.get("failed", 0) == 0 and s.get("passed", 0) > 0]
@@ -858,9 +854,25 @@ def main() -> int:
             print(f"=== {len(no_tests_ran)} file{'s' if len(no_tests_ran) != 1 else ''} where no tests ran (collection/import error, timeout before collection, etc.) ===")
             for file, s in no_tests_ran:
                 print(f"  {_format_file(file, repo_root)}")
-        return 1
+                # Surface the actual error so the developer doesn't have to
+                # re-run the file to discover *why* it collected zero tests.
+                raw = output_by_file.get(file, "")
+                error_lines = [
+                    l.strip() for l in raw.splitlines()
+                    if l.strip().startswith("E   ") or l.strip().startswith("ERROR ")
+                ][:3]
+                for el in error_lines:
+                    print(f"    {el}")
+        print()
+        print("=== Failure output ===")
+        for file, output, _summary in failures:
+            print()
+            print(f"--- {_format_file(file, repo_root)} ---")
+            print(output.rstrip())
 
-    return 0
+    print()
+    print(f"=== Summary: {len(files)} files, {tests_passed} tests passed, {tests_failed} failed ({pct:.0f}% complete) in {elapsed:.1f}s ({args.jobs} workers) ===")
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

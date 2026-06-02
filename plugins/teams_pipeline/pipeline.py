@@ -31,7 +31,7 @@ from plugins.teams_pipeline.models import (
     TeamsMeetingSummaryPayload,
 )
 from plugins.teams_pipeline.store import TeamsPipelineStore
-from tools.transcription_tools import transcribe_audio
+from hermes_agent_stt.transcription_tools import transcribe_audio
 
 logger = logging.getLogger(__name__)
 

@@ -25,3 +25,9 @@ novita = ProviderProfile(
 )
 
 register_provider(novita)
+
+
+def register(ctx):
+    """No-op — this provider has no workspace package yet."""
+    pass
+

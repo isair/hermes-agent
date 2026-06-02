@@ -3,7 +3,7 @@
 import asyncio
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -273,6 +273,15 @@ class TestTelegramAutoTtsCaptionDelivery:
 
         return hold
 
+    @staticmethod
+    def _make_tts_provider(tts_path):
+        """Create a mock ToolProviderEntry-like object for the TTS registry."""
+        tts_tool_fn = lambda text: json.dumps({"file_path": str(tts_path)})
+        provider = MagicMock()
+        provider.check_fn = lambda: True
+        provider.tool_functions = {"text_to_speech_tool": tts_tool_fn}
+        return provider
+
     @pytest.mark.asyncio
     async def test_short_telegram_auto_tts_uses_caption_without_followup_text(self, tmp_path):
         adapter = DummyTelegramAdapter()
@@ -285,10 +294,7 @@ class TestTelegramAutoTtsCaptionDelivery:
         tts_path.write_text("audio", encoding="utf-8")
         event = self._make_voice_event()
 
-        with patch("tools.tts_tool.check_tts_requirements", return_value=True), patch(
-            "tools.tts_tool.text_to_speech_tool",
-            return_value=json.dumps({"file_path": str(tts_path)}),
-        ):
+        with patch("agent.plugin_registries.registries.get_tool_provider", return_value=self._make_tts_provider(tts_path)):
             await adapter._process_message_background(event, build_session_key(event.source))
 
         adapter.play_tts.assert_awaited_once()
@@ -308,10 +314,7 @@ class TestTelegramAutoTtsCaptionDelivery:
         tts_path.write_text("audio", encoding="utf-8")
         event = self._make_voice_event()
 
-        with patch("tools.tts_tool.check_tts_requirements", return_value=True), patch(
-            "tools.tts_tool.text_to_speech_tool",
-            return_value=json.dumps({"file_path": str(tts_path)}),
-        ):
+        with patch("agent.plugin_registries.registries.get_tool_provider", return_value=self._make_tts_provider(tts_path)):
             await adapter._process_message_background(event, build_session_key(event.source))
 
         adapter.play_tts.assert_awaited_once()
@@ -337,10 +340,7 @@ class TestTelegramAutoTtsCaptionDelivery:
         tts_path.write_text("audio", encoding="utf-8")
         event = self._make_voice_event()
 
-        with patch("tools.tts_tool.check_tts_requirements", return_value=True), patch(
-            "tools.tts_tool.text_to_speech_tool",
-            return_value=json.dumps({"file_path": str(tts_path)}),
-        ):
+        with patch("agent.plugin_registries.registries.get_tool_provider", return_value=self._make_tts_provider(tts_path)):
             await adapter._process_message_background(event, build_session_key(event.source))
 
         adapter.play_tts.assert_awaited_once()

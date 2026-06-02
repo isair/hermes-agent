@@ -12,3 +12,9 @@ xiaomi = ProviderProfile(
 )
 
 register_provider(xiaomi)
+
+
+def register(ctx):
+    """No-op — this provider has no workspace package yet."""
+    pass
+

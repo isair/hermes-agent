@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-agent-stt"
+version = "0.1.0"
+description = "Speech-to-text transcription plugin for Hermes Agent (faster-whisper)"
+requires-python = ">=3.11"
+dependencies = [
+    "hermes-agent",
+    "faster-whisper==1.2.1",
+    "sounddevice==0.5.5",
+    "numpy==2.4.3",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+stt = "hermes_agent_stt:register"
+
+[tool.setuptools.packages.find]
+include = ["hermes_agent_stt*"]

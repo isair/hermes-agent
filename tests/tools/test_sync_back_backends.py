@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from tools.environments import ssh as ssh_env
-from tools.environments import modal as modal_env
-from tools.environments import daytona as daytona_env
+from hermes_agent_modal import modal as modal_env
+from hermes_agent_daytona import daytona as daytona_env
 from tools.environments.ssh import SSHEnvironment
 
 

@@ -976,11 +976,13 @@ def _resolve_azure_foundry_runtime(
             auth_mode = "api_key"
         else:
             try:
-                from agent.azure_identity_adapter import (
-                    EntraIdentityConfig,
-                    SCOPE_AI_AZURE_DEFAULT,
-                    build_token_provider,
-                )
+                from agent.plugin_registries import registries
+                _azure_ns = registries.get_provider_namespace("azure")
+                EntraIdentityConfig = _azure_ns.get("EntraIdentityConfig")
+                SCOPE_AI_AZURE_DEFAULT = _azure_ns.get("SCOPE_AI_AZURE_DEFAULT")
+                build_token_provider = _azure_ns.get("build_token_provider")
+                if not all([EntraIdentityConfig, SCOPE_AI_AZURE_DEFAULT, build_token_provider]):
+                    raise ImportError("azure provider services not fully registered")
             except Exception as exc:
                 raise AuthError(
                     "Azure Foundry Entra ID auth requires the 'azure-identity' "
@@ -1072,7 +1074,11 @@ def _resolve_explicit_runtime(
         base_url = explicit_base_url or cfg_base_url or "https://api.anthropic.com"
         api_key = explicit_api_key
         if not api_key:
-            from agent.anthropic_adapter import resolve_anthropic_token
+            from agent.plugin_registries import registries
+            _anthropic_ns = registries.get_provider_namespace("anthropic")
+            resolve_anthropic_token = _anthropic_ns.get("resolve_anthropic_token")
+            if resolve_anthropic_token is None:
+                raise ImportError("anthropic provider services not registered")
 
             api_key = resolve_anthropic_token()
             if not api_key:
@@ -1516,7 +1522,11 @@ def resolve_runtime_provider(
                     "config.yaml model section at a custom env var."
                 )
         else:
-            from agent.anthropic_adapter import resolve_anthropic_token
+            from agent.plugin_registries import registries
+            _anthropic_ns = registries.get_provider_namespace("anthropic")
+            resolve_anthropic_token = _anthropic_ns.get("resolve_anthropic_token")
+            if resolve_anthropic_token is None:
+                raise ImportError("anthropic provider services not registered")
             token = resolve_anthropic_token()
             if not token:
                 raise AuthError(
@@ -1534,12 +1544,14 @@ def resolve_runtime_provider(
 
     # AWS Bedrock (native Converse API via boto3)
     if provider == "bedrock":
-        from agent.bedrock_adapter import (
-            has_aws_credentials,
-            resolve_aws_auth_env_var,
-            resolve_bedrock_region,
-            is_anthropic_bedrock_model,
-        )
+        from agent.plugin_registries import registries
+        _bedrock_ns = registries.get_provider_namespace("bedrock")
+        has_aws_credentials = _bedrock_ns.get("has_aws_credentials")
+        resolve_aws_auth_env_var = _bedrock_ns.get("resolve_aws_auth_env_var")
+        resolve_bedrock_region = _bedrock_ns.get("resolve_bedrock_region")
+        is_anthropic_bedrock_model = _bedrock_ns.get("is_anthropic_bedrock_model")
+        if not all([has_aws_credentials, resolve_aws_auth_env_var, resolve_bedrock_region, is_anthropic_bedrock_model]):
+            raise ImportError("bedrock provider services not fully registered")
         # When the user explicitly selected bedrock (not auto-detected),
         # trust boto3's credential chain — it handles IMDS, ECS task roles,
         # Lambda execution roles, SSO, and other implicit sources that our

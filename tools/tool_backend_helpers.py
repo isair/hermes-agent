@@ -15,17 +15,12 @@ _VALID_MODAL_MODES = {"auto", "direct", "managed"}
 
 
 def managed_nous_tools_enabled(*, force_fresh: bool = False) -> bool:
-    """Return True when the user is entitled to the Nous Tool Gateway.
-
-    Entitlement is paid Nous Portal service access OR a live free tool pool
-    (``tool_gateway_entitled``). Per-category coverage (the pool funds image but
-    not video, etc.) is narrowed by callers via ``tool_gateway_entitled_for``;
-    this coarse gate only answers "is any managed tool usable at all".
+    """Return True when the user has paid Nous Portal service access.
 
     Tool Gateway availability fails closed on unknown/error entitlement.  We
     intentionally catch all exceptions and return False — never block startup.
     ``force_fresh=True`` is for interactive configuration flows that should
-    reflect a just-purchased subscription, credits, or pool grant immediately.
+    reflect a just-purchased subscription or credits immediately.
     """
     try:
         from hermes_cli.nous_account import get_nous_portal_account_info
@@ -36,7 +31,7 @@ def managed_nous_tools_enabled(*, force_fresh: bool = False) -> bool:
             account_info = get_nous_portal_account_info()
         if not account_info.logged_in:
             return False
-        return account_info.tool_gateway_entitled
+        return account_info.paid_service_access is True
     except Exception:
         return False
 

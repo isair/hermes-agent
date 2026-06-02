@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-agent-tts"
+version = "0.1.0"
+description = "Text-to-speech tool plugin for Hermes Agent (Edge TTS + ElevenLabs)"
+requires-python = ">=3.11"
+dependencies = [
+    "hermes-agent",
+    "edge-tts==7.2.7",
+    "elevenlabs==1.59.0",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+tts = "hermes_agent_tts:register"
+
+[tool.setuptools.packages.find]
+include = ["hermes_agent_tts*"]

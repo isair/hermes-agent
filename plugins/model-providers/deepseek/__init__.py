@@ -98,3 +98,9 @@ deepseek = DeepSeekProfile(
 )
 
 register_provider(deepseek)
+
+
+def register(ctx):
+    """No-op — this provider has no workspace package yet."""
+    pass
+

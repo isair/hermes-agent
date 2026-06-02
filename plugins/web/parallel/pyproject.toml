@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-agent-parallel"
+version = "1.0.0"
+description = "Parallel.ai web search and content extraction for Hermes Agent"
+requires-python = ">=3.11"
+dependencies = [
+    "hermes-agent",
+    "parallel-web==0.4.2",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+parallel = "hermes_agent_parallel:register"
+
+[tool.setuptools.packages.find]
+include = ["hermes_agent_parallel*"]

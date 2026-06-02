@@ -175,15 +175,16 @@ Scheduler tick → load due jobs from jobs.json
 If you are new to the codebase:
 
 1. **This page** — orient yourself
-2. **[Agent Loop Internals](./agent-loop.md)** — how AIAgent works
-3. **[Prompt Assembly](./prompt-assembly.md)** — system prompt construction
-4. **[Provider Runtime Resolution](./provider-runtime.md)** — how providers are selected
-5. **[Adding Providers](./adding-providers.md)** — practical guide to adding a new provider
-6. **[Tools Runtime](./tools-runtime.md)** — tool registry, dispatch, environments
-7. **[Session Storage](./session-storage.md)** — SQLite schema, FTS5, session lineage
-8. **[Gateway Internals](./gateway-internals.md)** — messaging platform gateway
-9. **[Context Compression & Prompt Caching](./context-compression-and-caching.md)** — compression and caching
-10. **[ACP Internals](./acp-internals.md)** — IDE integration
+2. **[Plugin Architecture](./plugin-architecture.md)** — how plugins work, workspace layout, registries
+3. **[Agent Loop Internals](./agent-loop.md)** — how AIAgent works
+4. **[Prompt Assembly](./prompt-assembly.md)** — system prompt construction
+5. **[Provider Runtime Resolution](./provider-runtime.md)** — how providers are selected
+6. **[Adding Providers](./adding-providers.md)** — practical guide to adding a new provider
+7. **[Tools Runtime](./tools-runtime.md)** — tool registry, dispatch, environments
+8. **[Session Storage](./session-storage.md)** — SQLite schema, FTS5, session lineage
+9. **[Gateway Internals](./gateway-internals.md)** — messaging platform gateway
+10. **[Context Compression & Prompt Caching](./context-compression-and-caching.md)** — compression and caching
+11. **[ACP Internals](./acp-internals.md)** — IDE integration
 
 ## Major Subsystems
 
@@ -229,9 +230,13 @@ Long-running process with 20 platform adapters, unified session routing, user au
 
 ### Plugin System
 
-Three discovery sources: `~/.hermes/plugins/` (user), `.hermes/plugins/` (project), and pip entry points. Plugins register tools, hooks, and CLI commands through a context API. Two specialized plugin types exist: memory providers (`plugins/memory/`) and context engines (`plugins/context_engine/`). Both are single-select — only one of each can be active at a time, configured via `hermes plugins` or `config.yaml`.
+Plugin-first architecture: every optional capability lives in its own installable Python package under `plugins/` as a uv workspace member. The core codebase (`agent/`, `hermes_cli/`, `gateway/`, `tools/`) **never** imports from a `hermes_agent_*` plugin package directly — plugins register capabilities into typed registries during `register()`, and the core queries those registries at runtime.
 
-→ [Plugin Guide](/guides/build-a-hermes-plugin), [Memory Provider Plugin](./memory-provider-plugin.md)
+Registry types: `auth_providers`, `transport_builders`, `platform_adapters`, `tool_providers`, `model_metadata`, `credential_pools` (in `agent/plugin_registries.py`), plus existing specialized registries (`platform_registry`, `tts_registry`, `image_gen_provider`, etc.).
+
+Discovery sources: `~/.hermes/plugins/` (user), `.hermes/plugins/` (project), pip entry points, and uv workspace members. On NixOS, `loadWorkspace` discovers all workspace members from `uv.lock` automatically.
+
+→ [Plugin Architecture](/developer-guide/plugin-architecture), [Plugin Guide](/guides/build-a-hermes-plugin), [Memory Provider Plugin](./memory-provider-plugin)
 
 ### Cron
 
@@ -259,7 +264,7 @@ Generates ShareGPT-format trajectories from agent sessions for training data gen
 | **Observable execution** | Every tool call is visible to the user via callbacks. Progress updates in CLI (spinner) and gateway (chat messages). |
 | **Interruptible** | API calls and tool execution can be cancelled mid-flight by user input or signals. |
 | **Platform-agnostic core** | One AIAgent class serves CLI, gateway, ACP, batch, and API server. Platform differences live in the entry point, not the agent. |
-| **Loose coupling** | Optional subsystems (MCP, plugins, memory providers, RL environments) use registry patterns and check_fn gating, not hard dependencies. |
+| **Loose coupling** | Optional subsystems (MCP, plugins, memory providers, RL environments) use registry patterns and check_fn gating, not hard dependencies. Core never imports from `hermes_agent_*` plugin packages — it queries typed registries in `agent/plugin_registries.py`. |
 | **Profile isolation** | Each profile (`hermes -p <name>`) gets its own HERMES_HOME, config, memory, sessions, and gateway PID. Multiple profiles run concurrently. |
 
 ## File Dependency Chain

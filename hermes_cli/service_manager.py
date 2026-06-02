@@ -615,13 +615,11 @@ class S6ServiceManager:
         # guard.
         lines.append("export HERMES_S6_SUPERVISED_CHILD=1")
         if profile == "default":
-            gateway_cmd = "hermes gateway run"
+            lines.append("exec s6-setuidgid hermes hermes gateway run")
         else:
-            gateway_cmd = f"hermes -p {shlex.quote(profile)} gateway run"
-        # Skip the drop when already non-root (setgroups() lacks CAP_SETGID →
-        # s6 boot-loop).
-        lines.append(f'[ "$(id -u)" = 0 ] || exec {gateway_cmd}')
-        lines.append(f"exec s6-setuidgid hermes {gateway_cmd}")
+            lines.append(
+                f"exec s6-setuidgid hermes hermes -p {shlex.quote(profile)} gateway run"
+            )
         return "\n".join(lines) + "\n"
 
     @staticmethod
@@ -676,8 +674,6 @@ class S6ServiceManager:
             f'log_dir="$HERMES_HOME/logs/gateways/{prof}"\n'
             f'mkdir -p "$log_dir"\n'
             f'chown -R hermes:hermes "$log_dir" 2>/dev/null || true\n'
-            # Skip the drop when already non-root (CAP_SETGID).
-            f'[ "$(id -u)" = 0 ] || exec s6-log 1 n10 s1000000 T "$log_dir"\n'
             f'exec s6-setuidgid hermes s6-log 1 n10 s1000000 T "$log_dir"\n'
         )
 

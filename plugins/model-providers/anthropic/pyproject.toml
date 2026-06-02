@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-agent-anthropic"
+version = "0.1.0"
+description = "Anthropic Messages API adapter for Hermes Agent"
+requires-python = ">=3.11"
+dependencies = [
+    "hermes-agent",
+    "anthropic==0.87.0",
+    "hermes-agent-azure",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+anthropic = "hermes_agent_anthropic:register"
+
+[tool.setuptools.packages.find]
+include = ["hermes_agent_anthropic*"]

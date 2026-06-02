@@ -18,3 +18,9 @@ huggingface = ProviderProfile(
 )
 
 register_provider(huggingface)
+
+
+def register(ctx):
+    """No-op — this provider has no workspace package yet."""
+    pass
+

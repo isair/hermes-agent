@@ -269,13 +269,7 @@ class SimplexAdapter(BasePlatformAdapter):
     # ------------------------------------------------------------------
 
     async def _health_monitor(self) -> None:
-        """Observe WebSocket idleness without reconnecting healthy quiet links.
-
-        simplex-chat can legitimately stay application-silent for long periods
-        when no messages arrive. The websockets client already sends protocol
-        pings (see _ws_listener ping_interval/ping_timeout), so treating lack of
-        chat events as a stale connection causes needless reconnect churn.
-        """
+        """Force reconnect if the WebSocket has been idle too long."""
         while self._running:
             await asyncio.sleep(HEALTH_CHECK_INTERVAL)
             if not self._running:
@@ -283,7 +277,15 @@ class SimplexAdapter(BasePlatformAdapter):
 
             elapsed = time.time() - self._last_ws_activity
             if elapsed > HEALTH_CHECK_STALE_THRESHOLD:
-                logger.debug("SimpleX: WS application-idle for %.0fs", elapsed)
+                logger.warning(
+                    "SimpleX: WS idle for %.0fs, forcing reconnect", elapsed
+                )
+                self._last_ws_activity = time.time()
+                if self._ws:
+                    try:
+                        await self._ws.close()
+                    except Exception:
+                        pass
 
     # ------------------------------------------------------------------
     # Inbound event handling
@@ -291,12 +293,7 @@ class SimplexAdapter(BasePlatformAdapter):
 
     async def _handle_event(self, event: dict) -> None:
         """Dispatch a daemon event to the appropriate handler."""
-        # simplex-chat WebSocket messages are usually shaped as:
-        #   {"corrId": "...", "resp": {"type": "newChatItems", ...}}
-        # Older/examples may put the response fields at top-level. Normalize
-        # both forms before dispatching, otherwise inbound chatItems are lost.
-        resp = event.get("resp") if isinstance(event.get("resp"), dict) else event
-        resp_type = event.get("type") or resp.get("type", "")
+        resp_type = event.get("type") or event.get("resp", {}).get("type", "")
 
         # Filter responses to our own commands (echoes)
         corr_id = event.get("corrId", "")
@@ -305,10 +302,10 @@ class SimplexAdapter(BasePlatformAdapter):
             return
 
         if resp_type == "newChatItem":
-            await self._handle_new_chat_item(resp)
+            await self._handle_new_chat_item(event)
         elif resp_type == "newChatItems":
             # Batch variant — process each item
-            items = resp.get("chatItems") or []
+            items = event.get("chatItems") or []
             for item_wrapper in items:
                 await self._handle_new_chat_item(item_wrapper)
         # Ignore all other event types (delivery receipts, contact updates, etc.)
@@ -350,9 +347,7 @@ class SimplexAdapter(BasePlatformAdapter):
                 or contact_info.get("localDisplayName")
                 or contact_id
             )
-            # Replies must be routed by SimpleX CLI display name, while
-            # authorization should still use the stable numeric contactId.
-            chat_id = contact_name or contact_id
+            chat_id = contact_id
             chat_name = contact_name
 
         if not chat_id:
@@ -369,7 +364,7 @@ class SimplexAdapter(BasePlatformAdapter):
                 or sender_id
             )
         else:
-            sender_id = contact_id if not is_group else chat_id
+            sender_id = chat_id
             sender_name = chat_name
 
         # Extract text
@@ -513,11 +508,7 @@ class SimplexAdapter(BasePlatformAdapter):
             group_id = chat_id[6:]
             cmd_str = f"#[{group_id}] {content}"
         else:
-            # SimpleX CLI addresses direct contacts by display name, e.g.
-            # `@Alice hello`. `@[Alice]` is interpreted literally as a contact
-            # named "[Alice]" and `@[4]` as "[4]", so do not wrap direct
-            # chat IDs / display names in brackets.
-            cmd_str = f"@{chat_id} {content}"
+            cmd_str = f"@[{chat_id}] {content}"
 
         payload = {
             "corrId": corr_id,
@@ -652,8 +643,7 @@ async def _standalone_send(
             group_id = chat_id[6:]
             cmd_str = f"#[{group_id}] {message}"
         else:
-            # Direct contacts are addressed by display name without brackets.
-            cmd_str = f"@{chat_id} {message}"
+            cmd_str = f"@[{chat_id}] {message}"
 
         payload = {
             "corrId": f"hermes-snd-{int(time.time() * 1000)}",

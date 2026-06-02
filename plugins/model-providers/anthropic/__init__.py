@@ -50,3 +50,9 @@ anthropic = AnthropicProfile(
 )
 
 register_provider(anthropic)
+
+
+def register(ctx):
+    """Plugin entry point — delegates to the inner hermes_agent_anthropic package."""
+    from hermes_agent_anthropic import register as _inner_register
+    _inner_register(ctx)

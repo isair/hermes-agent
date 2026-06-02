@@ -579,25 +579,25 @@ async def _send_to_platform(platform, pconfig, chat_id, message, thread_id=None,
     """
     from gateway.config import Platform
     from gateway.platforms.base import BasePlatformAdapter, utf16_len
-    from gateway.platforms.slack import SlackAdapter
 
-    # Telegram adapter import is optional (requires python-telegram-bot)
-    try:
-        from gateway.platforms.telegram import TelegramAdapter
-        _telegram_available = True
-    except ImportError:
-        _telegram_available = False
+    # Resolve adapter classes from the plugin registry instead of importing
+    # from hermes_agent_* packages directly.
+    from agent.plugin_registries import registries
 
-    # Feishu adapter import is optional (requires lark-oapi)
-    try:
-        from gateway.platforms.feishu import FeishuAdapter
-        _feishu_available = True
-    except ImportError:
-        _feishu_available = False
+    _slack_entry = registries.get_platform("slack")
+    SlackAdapter = _slack_entry.adapter_class if _slack_entry else None
+
+    _telegram_entry = registries.get_platform("telegram")
+    TelegramAdapter = _telegram_entry.adapter_class if _telegram_entry else None
+    _telegram_available = TelegramAdapter is not None
+
+    _feishu_entry = registries.get_platform("feishu")
+    FeishuAdapter = _feishu_entry.adapter_class if _feishu_entry else None
+    _feishu_available = FeishuAdapter is not None
 
     media_files = media_files or []
 
-    if platform == Platform.SLACK and message:
+    if platform == Platform.SLACK and message and SlackAdapter is not None:
         try:
             slack_adapter = SlackAdapter.__new__(SlackAdapter)
             message = slack_adapter.format_message(message)
@@ -606,11 +606,12 @@ async def _send_to_platform(platform, pconfig, chat_id, message, thread_id=None,
 
     # Platform message length limits (from adapter class attributes for
     # built-in platforms; from PlatformEntry.max_message_length for plugins).
-    _MAX_LENGTHS = {
-        Platform.TELEGRAM: TelegramAdapter.MAX_MESSAGE_LENGTH if _telegram_available else 4096,
-        Platform.SLACK: SlackAdapter.MAX_MESSAGE_LENGTH,
-    }
-    if _feishu_available:
+    _MAX_LENGTHS = {}
+    if TelegramAdapter is not None:
+        _MAX_LENGTHS[Platform.TELEGRAM] = TelegramAdapter.MAX_MESSAGE_LENGTH
+    if SlackAdapter is not None:
+        _MAX_LENGTHS[Platform.SLACK] = SlackAdapter.MAX_MESSAGE_LENGTH
+    if FeishuAdapter is not None:
         _MAX_LENGTHS[Platform.FEISHU] = FeishuAdapter.MAX_MESSAGE_LENGTH
 
     # Check plugin registry for max_message_length
@@ -847,9 +848,14 @@ async def _send_telegram(token, chat_id, message, media_files=None, thread_id=No
         else:
             # Reuse the gateway adapter's format_message for markdown→MarkdownV2
             try:
-                from gateway.platforms.telegram import TelegramAdapter
-                _adapter = TelegramAdapter.__new__(TelegramAdapter)
-                formatted = _adapter.format_message(message)
+                from agent.plugin_registries import registries
+                _tg_entry = registries.get_platform("telegram")
+                TelegramAdapter = _tg_entry.adapter_class if _tg_entry else None
+                if TelegramAdapter is not None:
+                    _adapter = TelegramAdapter.__new__(TelegramAdapter)
+                    formatted = _adapter.format_message(message)
+                else:
+                    formatted = message
             except Exception:
                 # Fallback: send as-is if formatting unavailable
                 formatted = message
@@ -892,10 +898,17 @@ async def _send_telegram(token, chat_id, message, media_files=None, thread_id=No
             # send to a forum group's General topic always errors out
             # (see issue #22267).
             try:
-                from gateway.platforms.telegram import TelegramAdapter
-                effective_thread_id = TelegramAdapter._message_thread_id_for_send(
-                    str(thread_id)
-                )
+                from agent.plugin_registries import registries as _registries
+                _tg_entry = _registries.get_platform("telegram")
+                _TelegramAdapter = _tg_entry.adapter_class if _tg_entry else None
+                if _TelegramAdapter is not None:
+                    effective_thread_id = _TelegramAdapter._message_thread_id_for_send(
+                        str(thread_id)
+                    )
+                else:
+                    effective_thread_id = (
+                        None if str(thread_id) == "1" else int(thread_id)
+                    )
             except Exception:
                 # Fallback: explicit mapping in case the adapter import
                 # fails (e.g. python-telegram-bot missing in this venv).
@@ -944,8 +957,13 @@ async def _send_telegram(token, chat_id, message, media_files=None, thread_id=No
                     )
                     if not _has_html:
                         try:
-                            from gateway.platforms.telegram import _strip_mdv2
-                            plain = _strip_mdv2(formatted)
+                            from agent.plugin_registries import registries
+                            _tg_entry = registries.get_platform("telegram")
+                            _strip_mdv2 = _tg_entry.helper_functions.get("_strip_mdv2") if _tg_entry else None
+                            if _strip_mdv2:
+                                plain = _strip_mdv2(formatted)
+                            else:
+                                plain = message
                         except Exception:
                             plain = message
                     else:
@@ -1417,8 +1435,12 @@ async def _send_matrix(token, extra, chat_id, message):
 async def _send_matrix_via_adapter(pconfig, chat_id, message, media_files=None, thread_id=None):
     """Send via the Matrix adapter so native Matrix media uploads are preserved."""
     try:
-        from gateway.platforms.matrix import MatrixAdapter
-    except ImportError:
+        from agent.plugin_registries import registries
+        _matrix_entry = registries.get_platform("matrix")
+        MatrixAdapter = _matrix_entry.adapter_class if _matrix_entry else None
+        if MatrixAdapter is None:
+            return {"error": "Matrix dependencies not installed. Run: pip install 'mautrix[encryption]'"}
+    except Exception:
         return {"error": "Matrix dependencies not installed. Run: pip install 'mautrix[encryption]'"}
 
     media_files = media_files or []
@@ -1606,11 +1628,17 @@ async def _send_bluebubbles(extra, chat_id, message):
 async def _send_feishu(pconfig, chat_id, message, media_files=None, thread_id=None):
     """Send via Feishu/Lark using the adapter's send pipeline."""
     try:
-        from gateway.platforms.feishu import FeishuAdapter, FEISHU_AVAILABLE
+        from agent.plugin_registries import registries
+        _feishu_entry = registries.get_platform("feishu")
+        if _feishu_entry is None:
+            return {"error": "Feishu dependencies not installed. Run: pip install 'hermes-agent[feishu]'"}
+        FeishuAdapter = _feishu_entry.adapter_class
+        FEISHU_AVAILABLE = _feishu_entry.constants.get("FEISHU_AVAILABLE", False)
+        FEISHU_DOMAIN = _feishu_entry.constants.get("FEISHU_DOMAIN", "")
+        LARK_DOMAIN = _feishu_entry.constants.get("LARK_DOMAIN", "")
         if not FEISHU_AVAILABLE:
             return {"error": "Feishu dependencies not installed. Run: pip install 'hermes-agent[feishu]'"}
-        from gateway.platforms.feishu import FEISHU_DOMAIN, LARK_DOMAIN
-    except ImportError:
+    except Exception:
         return {"error": "Feishu dependencies not installed. Run: pip install 'hermes-agent[feishu]'"}
 
     media_files = media_files or []

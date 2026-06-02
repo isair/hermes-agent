@@ -48,7 +48,8 @@ def _runner_with_adapter(send_voice_mock):
 
 
 def _fake_tts_call(monkeypatch, audio_bytes=b"\x00" * 32):
-    """Patch the TTS tool so it writes a real file at the requested path."""
+    """Patch the TTS registry provider so it writes a real file at the requested path."""
+    from agent.plugin_registries import registries, ToolProviderEntry
 
     def _fake_text_to_speech_tool(*, text, output_path, **_kwargs):
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -56,14 +57,15 @@ def _fake_tts_call(monkeypatch, audio_bytes=b"\x00" * 32):
             fh.write(audio_bytes)
         return json.dumps({"success": True, "file_path": output_path})
 
-    monkeypatch.setattr(
-        "tools.tts_tool.text_to_speech_tool",
-        _fake_text_to_speech_tool,
+    mock_provider = ToolProviderEntry(
+        name="tts",
+        tool_functions={
+            "text_to_speech_tool": _fake_text_to_speech_tool,
+            "_strip_markdown_for_tts": lambda text: text,
+        },
+        check_fn=lambda: True,
     )
-    monkeypatch.setattr(
-        "tools.tts_tool._strip_markdown_for_tts",
-        lambda text: text,
-    )
+    monkeypatch.setattr(registries, "get_tool_provider", lambda name: mock_provider if name == "tts" else None)
 
 
 @pytest.mark.asyncio

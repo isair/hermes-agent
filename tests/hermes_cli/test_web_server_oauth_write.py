@@ -1,4 +1,5 @@
 import os
+from unittest.mock import patch
 
 import pytest
 
@@ -19,9 +20,11 @@ class _DummyPool:
 @pytest.fixture
 def oauth_file(monkeypatch, tmp_path):
     target = tmp_path / '.anthropic_oauth.json'
-    monkeypatch.setattr('agent.anthropic_adapter._HERMES_OAUTH_FILE', target)
-    monkeypatch.setattr('agent.credential_pool.load_pool', lambda _provider: _DummyPool())
-    return target
+    from agent.plugin_registries import registries
+    fake_ns = {"_HERMES_OAUTH_FILE": target}
+    with patch.dict(registries._provider_services, {"anthropic": fake_ns}):
+        monkeypatch.setattr('agent.credential_pool.load_pool', lambda _provider: _DummyPool())
+        yield target
 
 
 def test_dashboard_oauth_write_uses_owner_only_permissions(oauth_file):

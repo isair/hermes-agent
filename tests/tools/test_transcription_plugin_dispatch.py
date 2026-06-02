@@ -22,7 +22,7 @@ import pytest
 
 from agent import transcription_registry
 from agent.transcription_provider import TranscriptionProvider
-from tools import transcription_tools
+from hermes_agent_stt import transcription_tools
 
 
 class _FakeProvider(TranscriptionProvider):
@@ -219,10 +219,10 @@ class TestTranscribeAudioE2E:
         provider = _FakeProvider(name="openrouter")
         transcription_registry.register_provider(provider)
 
-        with patch("tools.transcription_tools._validate_audio_file", return_value=None), \
-             patch("tools.transcription_tools._load_stt_config", return_value={"provider": "openrouter"}), \
-             patch("tools.transcription_tools.is_stt_enabled", return_value=True), \
-             patch("tools.transcription_tools._get_provider", return_value="openrouter"):
+        with patch("hermes_agent_stt.transcription_tools._validate_audio_file", return_value=None), \
+             patch("hermes_agent_stt.transcription_tools._load_stt_config", return_value={"provider": "openrouter"}), \
+             patch("hermes_agent_stt.transcription_tools.is_stt_enabled", return_value=True), \
+             patch("hermes_agent_stt.transcription_tools._get_provider", return_value="openrouter"):
             result = transcription_tools.transcribe_audio("/tmp/audio.mp3")
 
         assert result["success"] is True
@@ -235,10 +235,10 @@ class TestTranscribeAudioE2E:
         the legacy 'No STT provider available' error message."""
         from unittest.mock import patch
 
-        with patch("tools.transcription_tools._validate_audio_file", return_value=None), \
-             patch("tools.transcription_tools._load_stt_config", return_value={"provider": "openrouter"}), \
-             patch("tools.transcription_tools.is_stt_enabled", return_value=True), \
-             patch("tools.transcription_tools._get_provider", return_value="openrouter"):
+        with patch("hermes_agent_stt.transcription_tools._validate_audio_file", return_value=None), \
+             patch("hermes_agent_stt.transcription_tools._load_stt_config", return_value={"provider": "openrouter"}), \
+             patch("hermes_agent_stt.transcription_tools.is_stt_enabled", return_value=True), \
+             patch("hermes_agent_stt.transcription_tools._get_provider", return_value="openrouter"):
             result = transcription_tools.transcribe_audio("/tmp/audio.mp3")
 
         assert result["success"] is False
@@ -255,10 +255,10 @@ class TestTranscribeAudioE2E:
         provider = _FakeProvider(name="openrouter")
         transcription_registry.register_provider(provider)
 
-        with patch("tools.transcription_tools._validate_audio_file", return_value=None), \
-             patch("tools.transcription_tools._load_stt_config", return_value={"provider": "groq"}), \
-             patch("tools.transcription_tools._get_provider", return_value="groq"), \
-             patch("tools.transcription_tools._transcribe_groq",
+        with patch("hermes_agent_stt.transcription_tools._validate_audio_file", return_value=None), \
+             patch("hermes_agent_stt.transcription_tools._load_stt_config", return_value={"provider": "groq"}), \
+             patch("hermes_agent_stt.transcription_tools._get_provider", return_value="groq"), \
+             patch("hermes_agent_stt.transcription_tools._transcribe_groq",
                    return_value={"success": True, "transcript": "from groq", "provider": "groq"}) as mock_groq:
             result = transcription_tools.transcribe_audio("/tmp/audio.mp3")
 
@@ -339,10 +339,10 @@ class TestAvailabilityGate:
         provider = _FakeProvider(name="openrouter", available=False)
         transcription_registry.register_provider(provider)
 
-        with patch("tools.transcription_tools._validate_audio_file", return_value=None), \
-             patch("tools.transcription_tools._load_stt_config", return_value={"provider": "openrouter"}), \
-             patch("tools.transcription_tools.is_stt_enabled", return_value=True), \
-             patch("tools.transcription_tools._get_provider", return_value="openrouter"):
+        with patch("hermes_agent_stt.transcription_tools._validate_audio_file", return_value=None), \
+             patch("hermes_agent_stt.transcription_tools._load_stt_config", return_value={"provider": "openrouter"}), \
+             patch("hermes_agent_stt.transcription_tools.is_stt_enabled", return_value=True), \
+             patch("hermes_agent_stt.transcription_tools._get_provider", return_value="openrouter"):
             result = transcription_tools.transcribe_audio("/tmp/audio.mp3")
 
         assert result["success"] is False
@@ -375,10 +375,10 @@ class TestLanguageForwardingFromConfig:
             "provider": "openrouter",
             "openrouter": {"language": "ja"},
         }
-        with patch("tools.transcription_tools._validate_audio_file", return_value=None), \
-             patch("tools.transcription_tools._load_stt_config", return_value=stt_config), \
-             patch("tools.transcription_tools.is_stt_enabled", return_value=True), \
-             patch("tools.transcription_tools._get_provider", return_value="openrouter"):
+        with patch("hermes_agent_stt.transcription_tools._validate_audio_file", return_value=None), \
+             patch("hermes_agent_stt.transcription_tools._load_stt_config", return_value=stt_config), \
+             patch("hermes_agent_stt.transcription_tools.is_stt_enabled", return_value=True), \
+             patch("hermes_agent_stt.transcription_tools._get_provider", return_value="openrouter"):
             transcription_tools.transcribe_audio("/tmp/audio.mp3")
 
         assert provider.last_call is not None
@@ -396,10 +396,10 @@ class TestLanguageForwardingFromConfig:
             "provider": "openrouter",
             "openrouter": {"model": "whisper-large-v3"},
         }
-        with patch("tools.transcription_tools._validate_audio_file", return_value=None), \
-             patch("tools.transcription_tools._load_stt_config", return_value=stt_config), \
-             patch("tools.transcription_tools.is_stt_enabled", return_value=True), \
-             patch("tools.transcription_tools._get_provider", return_value="openrouter"):
+        with patch("hermes_agent_stt.transcription_tools._validate_audio_file", return_value=None), \
+             patch("hermes_agent_stt.transcription_tools._load_stt_config", return_value=stt_config), \
+             patch("hermes_agent_stt.transcription_tools.is_stt_enabled", return_value=True), \
+             patch("hermes_agent_stt.transcription_tools._get_provider", return_value="openrouter"):
             transcription_tools.transcribe_audio("/tmp/audio.mp3")
 
         assert provider.last_call["kwargs"]["model"] == "whisper-large-v3"
@@ -415,10 +415,10 @@ class TestLanguageForwardingFromConfig:
             "provider": "openrouter",
             "openrouter": {"model": "config-model"},
         }
-        with patch("tools.transcription_tools._validate_audio_file", return_value=None), \
-             patch("tools.transcription_tools._load_stt_config", return_value=stt_config), \
-             patch("tools.transcription_tools.is_stt_enabled", return_value=True), \
-             patch("tools.transcription_tools._get_provider", return_value="openrouter"):
+        with patch("hermes_agent_stt.transcription_tools._validate_audio_file", return_value=None), \
+             patch("hermes_agent_stt.transcription_tools._load_stt_config", return_value=stt_config), \
+             patch("hermes_agent_stt.transcription_tools.is_stt_enabled", return_value=True), \
+             patch("hermes_agent_stt.transcription_tools._get_provider", return_value="openrouter"):
             transcription_tools.transcribe_audio(
                 "/tmp/audio.mp3", model="explicit-arg-model",
             )
@@ -432,10 +432,10 @@ class TestLanguageForwardingFromConfig:
         provider = _FakeProvider(name="openrouter")
         transcription_registry.register_provider(provider)
 
-        with patch("tools.transcription_tools._validate_audio_file", return_value=None), \
-             patch("tools.transcription_tools._load_stt_config", return_value={"provider": "openrouter"}), \
-             patch("tools.transcription_tools.is_stt_enabled", return_value=True), \
-             patch("tools.transcription_tools._get_provider", return_value="openrouter"):
+        with patch("hermes_agent_stt.transcription_tools._validate_audio_file", return_value=None), \
+             patch("hermes_agent_stt.transcription_tools._load_stt_config", return_value={"provider": "openrouter"}), \
+             patch("hermes_agent_stt.transcription_tools.is_stt_enabled", return_value=True), \
+             patch("hermes_agent_stt.transcription_tools._get_provider", return_value="openrouter"):
             transcription_tools.transcribe_audio("/tmp/audio.mp3")
 
         assert provider.last_call["kwargs"]["language"] is None
@@ -450,10 +450,10 @@ class TestLanguageForwardingFromConfig:
         transcription_registry.register_provider(provider)
 
         stt_config = {"provider": "openrouter", "openrouter": "garbage"}
-        with patch("tools.transcription_tools._validate_audio_file", return_value=None), \
-             patch("tools.transcription_tools._load_stt_config", return_value=stt_config), \
-             patch("tools.transcription_tools.is_stt_enabled", return_value=True), \
-             patch("tools.transcription_tools._get_provider", return_value="openrouter"):
+        with patch("hermes_agent_stt.transcription_tools._validate_audio_file", return_value=None), \
+             patch("hermes_agent_stt.transcription_tools._load_stt_config", return_value=stt_config), \
+             patch("hermes_agent_stt.transcription_tools.is_stt_enabled", return_value=True), \
+             patch("hermes_agent_stt.transcription_tools._get_provider", return_value="openrouter"):
             result = transcription_tools.transcribe_audio("/tmp/audio.mp3")
 
         # Should still dispatch successfully (config is just ignored)

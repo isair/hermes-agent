@@ -143,8 +143,15 @@ def create_environment(
         return DockerEnvironment(image=image, cwd=cwd, timeout=timeout, **kwargs)
     
     elif env_type == "modal":
-        from tools.environments.modal import ModalEnvironment
-        return ModalEnvironment(image=image, cwd=cwd, timeout=timeout, **kwargs)
+        from agent.plugin_registries import registries
+        _modal = registries.get_tool_provider("modal")
+        _ModalEnvironment = _modal.environment_classes.get("ModalEnvironment") if _modal else None
+        if _ModalEnvironment is None:
+            raise ValueError(
+                "Modal backend selected but the hermes_agent_modal plugin is not loaded. "
+                "Ensure the modal plugin is installed and enabled."
+            )
+        return _ModalEnvironment(image=image, cwd=cwd, timeout=timeout, **kwargs)
     
     else:
         raise ValueError(f"Unknown environment type: {env_type}. Use 'local', 'docker', or 'modal'")

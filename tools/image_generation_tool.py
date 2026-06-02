@@ -51,17 +51,45 @@ def _load_fal_client() -> Any:
     global fal_client
     if fal_client is not None:
         return fal_client
-    from tools.fal_common import import_fal_client
-    fal_client = import_fal_client()
-    return fal_client
+    # Registry lookup (hermes_agent_fal is a plugin)
+    from agent.plugin_registries import registries
+    _fal = registries.get_tool_provider("fal")
+    if _fal:
+        _import_fal_client = _fal.tool_functions.get("import_fal_client")
+        if _import_fal_client:
+            fal_client = _import_fal_client()
+            return fal_client
+    return None
 
 
 from tools.debug_helpers import DebugSession
-from tools.fal_common import (
-    _ManagedFalSyncClient,
-    _extract_http_status,
-    _normalize_fal_queue_url_format,  # noqa: F401 — re-exported for tests
-)
+# FAL SDK helpers — resolved lazily from the plugin registry instead of
+# importing from hermes_agent_fal directly.  Module-level placeholders
+# preserve the existing test monkey-patching pattern.
+_ManagedFalSyncClient: Any = None
+_extract_http_status: Any = None
+_normalize_fal_queue_url_format: Any = None  # re-exported for tests
+
+
+def _resolve_fal_provider():
+    """Populate the module-level FAL helpers from the plugin registry.
+
+    Called lazily on first use by _get_managed_fal_client() and
+    _submit_fal_request().  Idempotent — a no-op after the first
+    successful resolution.
+    """
+    global _ManagedFalSyncClient, _extract_http_status, _normalize_fal_queue_url_format
+    if _ManagedFalSyncClient is not None:
+        return
+    from agent.plugin_registries import registries
+    _fal = registries.get_tool_provider("fal")
+    if _fal:
+        _ManagedFalSyncClient = _fal.config_functions.get("_ManagedFalSyncClient") or _ManagedFalSyncClient
+        _extract_http_status = _fal.config_functions.get("_extract_http_status") or _extract_http_status
+        _normalize_fal_queue_url_format = _fal.constants.get("_normalize_fal_queue_url_format") or _normalize_fal_queue_url_format
+    else:
+        # Plugin not registered — features unavailable
+        pass
 from tools.managed_tool_gateway import resolve_managed_tool_gateway
 from tools.tool_backend_helpers import (
     fal_key_is_configured,
@@ -421,6 +449,7 @@ def _get_managed_fal_client(managed_gateway):
         # Resolve fal_client on the legacy module — preserves the test
         # pattern of monkey-patching ``image_generation_tool.fal_client``.
         _load_fal_client()
+        _resolve_fal_provider()
         _managed_fal_client = _ManagedFalSyncClient(
             fal_client,
             key=managed_gateway.nous_user_token,
@@ -434,6 +463,7 @@ def _submit_fal_request(model: str, arguments: Dict[str, Any]):
     """Submit a FAL request using direct credentials or the managed queue gateway."""
     # Trigger the lazy import on first call. Idempotent.
     _load_fal_client()
+    _resolve_fal_provider()
     request_headers = {"x-idempotency-key": str(uuid.uuid4())}
     managed_gateway = _resolve_managed_fal_gateway()
     if managed_gateway is None:

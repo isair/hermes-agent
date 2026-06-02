@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-agent-bedrock"
+version = "0.1.0"
+description = "AWS Bedrock Converse API adapter for Hermes Agent"
+requires-python = ">=3.11"
+dependencies = [
+    "hermes-agent",
+    "boto3==1.42.89",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+bedrock = "hermes_agent_bedrock:register"
+
+[tool.setuptools.packages.find]
+include = ["hermes_agent_bedrock*"]

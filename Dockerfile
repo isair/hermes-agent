@@ -25,7 +25,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/hermes/.playwright
 # hermes process, the dashboard, and per-profile gateways.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    ca-certificates curl iputils-ping python3 python-is-python3 ripgrep ffmpeg gcc python3-dev python3-venv libffi-dev procps git openssh-client docker-cli xz-utils && \
+    ca-certificates curl iputils-ping python3 python-is-python3 ripgrep ffmpeg gcc python3-dev libffi-dev procps git openssh-client docker-cli xz-utils && \
     rm -rf /var/lib/apt/lists/*
 
 # ---------- s6-overlay install ----------
@@ -73,17 +73,7 @@ RUN set -eu; \
     tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz; \
     tar -C / -Jxpf /tmp/s6-overlay-arch.tar.xz; \
     tar -C / -Jxpf /tmp/s6-overlay-symlinks-noarch.tar.xz; \
-    rm /tmp/s6-overlay-*.tar.xz /tmp/s6-overlay.sha256; \
-    # #34192: backward-compat shim for orchestration templates that still\
-    # reference the legacy /usr/bin/tini entrypoint (e.g. Hostinger's\
-    # 'Hermes WebUI' catalog). The image has moved to s6-overlay /init\
-    # as PID 1 (see ENTRYPOINT below + the migration comment at the top\
-    # of this file), but external wrappers pinned to /usr/bin/tini will\
-    # crash with 'tini: No such file or directory' on startup. The shim\
-    # symlinks /usr/bin/tini -> /init so legacy wrappers exec the right\
-    # PID-1 reaper without behavior change for users on the current\
-    # ENTRYPOINT. Safe to drop once the affected catalogs are updated.\
-    ln -sf /init /usr/bin/tini
+    rm /tmp/s6-overlay-*.tar.xz /tmp/s6-overlay.sha256
 
 # Non-root user for runtime; UID can be overridden via HERMES_UID at runtime
 RUN useradd -u 10000 -m -d /opt/data hermes
@@ -146,13 +136,16 @@ RUN npm install --prefer-offline --no-audit && \
 # frontend stats the readme path during dep resolution, so we `touch` an
 # empty placeholder — the real README is restored by `COPY . .` below.
 #
-# `uv sync --frozen --no-install-project --extra all --extra messaging`
+# `uv sync --frozen --no-install-project --extra all --extra telegram
+# --extra slack --extra discord --extra feishu --extra dingtalk`
 # installs the deps reachable through the composite `[all]` extra
 # (handpicked set intended for the production image), plus gateway
 # messaging adapters that should work in the published image without a
-# first-boot lazy install.  We do NOT use `--all-extras`:
+# first-boot lazy install.  The `[all]` extra already includes
+# telegram, slack, discord, feishu, dingtalk.  We do NOT use `--all-extras`:
 # that would pull in `[rl]` (atroposlib + tinker + torch + wandb from
-# git), `[yc-bench]` (another git dep), and `[termux-all]` (Android
+# git), `[yc-bench]` (another git dep), `[matrix]` (python-olm, no
+# wheel on all platforms), and `[termux-all]` (Android
 # redundancy), none of which belong in the published container.
 #
 # Provider packages (anthropic, bedrock, azure-identity) are included
@@ -161,8 +154,31 @@ RUN npm install --prefer-offline --no-audit && \
 #
 # The editable link is created after the source copy below.
 COPY pyproject.toml uv.lock ./
+# Workspace member pyproject.toml files must be present for uv to resolve
+# the plugin extras.  We copy the minimal structure needed; full source
+# comes in the source COPY below.
+COPY plugins/dashboard/pyproject.toml plugins/dashboard/
+COPY plugins/image_gen/fal_pkg/pyproject.toml plugins/image_gen/fal_pkg/
+COPY plugins/memory/hindsight/pyproject.toml plugins/memory/hindsight/
+COPY plugins/memory/honcho/pyproject.toml plugins/memory/honcho/
+COPY plugins/model-providers/anthropic/pyproject.toml plugins/model-providers/anthropic/
+COPY plugins/model-providers/azure-foundry/pyproject.toml plugins/model-providers/azure-foundry/
+COPY plugins/model-providers/bedrock/pyproject.toml plugins/model-providers/bedrock/
+COPY plugins/platforms/dingtalk/pyproject.toml plugins/platforms/dingtalk/
+COPY plugins/platforms/discord/pyproject.toml plugins/platforms/discord/
+COPY plugins/platforms/feishu/pyproject.toml plugins/platforms/feishu/
+COPY plugins/platforms/matrix/pyproject.toml plugins/platforms/matrix/
+COPY plugins/platforms/slack/pyproject.toml plugins/platforms/slack/
+COPY plugins/platforms/telegram/pyproject.toml plugins/platforms/telegram/
+COPY plugins/stt/pyproject.toml plugins/stt/
+COPY plugins/terminals/daytona/pyproject.toml plugins/terminals/daytona/
+COPY plugins/terminals/modal/pyproject.toml plugins/terminals/modal/
+COPY plugins/tts/pyproject.toml plugins/tts/
+COPY plugins/web/exa/pyproject.toml plugins/web/exa/
+COPY plugins/web/firecrawl/pyproject.toml plugins/web/firecrawl/
+COPY plugins/web/parallel/pyproject.toml plugins/web/parallel/
 RUN touch ./README.md
-RUN uv sync --frozen --no-install-project --extra all --extra messaging --extra anthropic --extra bedrock --extra azure-identity
+RUN uv sync --frozen --no-install-project --extra all --extra anthropic --extra bedrock --extra azure-identity
 
 # ---------- Source code ----------
 # .dockerignore excludes node_modules, so the installs above survive.

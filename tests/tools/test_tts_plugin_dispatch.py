@@ -34,7 +34,7 @@ import pytest
 
 from agent import tts_registry
 from agent.tts_provider import TTSProvider
-from tools import tts_tool
+from hermes_agent_tts import tts_tool
 
 
 class _FakeTTSProvider(TTSProvider):

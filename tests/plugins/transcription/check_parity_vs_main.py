@@ -122,7 +122,7 @@ try:
 except ImportError:
     pass
 
-import tools.transcription_tools as tt
+import hermes_agent_stt as tt
 
 # Use a real (but empty) audio file so _validate_audio_file passes.
 audio_path = os.path.join(home, "audio.ogg")

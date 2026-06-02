@@ -56,3 +56,9 @@ copilot = CopilotProfile(
 )
 
 register_provider(copilot)
+
+
+def register(ctx):
+    """No-op — this provider has no workspace package yet."""
+    pass
+

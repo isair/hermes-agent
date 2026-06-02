@@ -1,0 +1,6 @@
+name: daytona
+version: 0.1.0
+description: Daytona cloud execution environment
+kind: backend
+provides_tools: ["daytona"]
+provides_hooks: []

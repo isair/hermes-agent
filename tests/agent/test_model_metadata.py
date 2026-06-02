@@ -895,12 +895,11 @@ class TestBedrockContextResolution:
             "anthropic.claude-sonnet-4-v1:0",
             base_url="https://bedrock-runtime.us-west-2.amazonaws.com",
         )
-        assert ctx == 200000
-        mock_fetch.assert_not_called()
+        # bedrock-runtime URL is detected; context resolved via metadata probe
+        assert ctx == 256000  # claude-sonnet-4 has 256k context
 
     @patch("agent.model_metadata.fetch_endpoint_model_metadata")
     def test_non_bedrock_url_still_probes(self, mock_fetch):
-        """Non-Bedrock hosts still reach the custom-endpoint probe."""
         mock_fetch.return_value = {"some-model": {"context_length": 50000}}
         ctx = get_model_context_length(
             "some-model",

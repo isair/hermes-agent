@@ -178,7 +178,6 @@ class MemoryProvider(ABC):
         *,
         parent_session_id: str = "",
         reset: bool = False,
-        rewound: bool = False,
         **kwargs,
     ) -> None:
         """Called when the agent switches session_id mid-process.
@@ -208,10 +207,6 @@ class MemoryProvider(ABC):
             (``_session_turns``, ``_turn_counter``, etc.) when this is
             set. ``False`` for ``/resume`` / ``/branch`` / compression
             where the logical conversation continues under the new id.
-        rewound:
-            ``True`` if session_id is unchanged but the transcript was
-            truncated; providers caching per-turn document state should
-            invalidate.
 
         Default is no-op for backward compatibility.
         """

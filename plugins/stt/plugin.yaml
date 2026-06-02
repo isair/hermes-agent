@@ -1,0 +1,6 @@
+name: stt
+version: 0.1.0
+description: Speech-to-text transcription plugin (faster-whisper)
+kind: backend
+provides_tools: ["transcription"]
+provides_hooks: []

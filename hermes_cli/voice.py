@@ -779,7 +779,9 @@ def speak_text(text: str) -> None:
     _debug(f"speak_text: TTS begin (paused_recording={paused_recording})")
 
     try:
-        from tools.tts_tool import text_to_speech_tool
+        from agent.plugin_registries import registries
+        _tts = registries.get_tool_provider("tts")
+        text_to_speech_tool = _tts.tool_functions.get("text_to_speech_tool") if _tts else None
 
         tts_text = text[:4000] if len(text) > 4000 else text
         tts_text = re.sub(r'```[\s\S]*?```', ' ', tts_text)             # fenced code blocks
@@ -806,6 +808,8 @@ def speak_text(text: str) -> None:
             f"tts_{time.strftime('%Y%m%d_%H%M%S')}.mp3",
         )
 
+        if text_to_speech_tool is None:
+            raise ImportError("TTS plugin not registered")
         _debug(f"speak_text: synthesizing {len(tts_text)} chars -> {mp3_path}")
         text_to_speech_tool(text=tts_text, output_path=mp3_path)
 

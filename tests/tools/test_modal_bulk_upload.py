@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from tools.environments import modal as modal_env
+from hermes_agent_modal import modal as modal_env
 
 
 def _make_mock_modal_env(monkeypatch, tmp_path):

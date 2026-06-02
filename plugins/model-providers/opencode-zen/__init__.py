@@ -115,3 +115,9 @@ opencode_go = OpenCodeGoProfile(
 
 register_provider(opencode_zen)
 register_provider(opencode_go)
+
+
+def register(ctx):
+    """No-op — this provider has no workspace package yet."""
+    pass
+

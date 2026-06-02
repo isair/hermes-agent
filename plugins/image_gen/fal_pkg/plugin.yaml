@@ -1,0 +1,6 @@
+name: fal
+version: 0.1.0
+description: FAL.ai image generation backend
+kind: backend
+provides_tools: ["image_gen"]
+provides_hooks: []

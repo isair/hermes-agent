@@ -759,7 +759,8 @@ def try_recover_primary_transport(
         agent.api_key = rt["api_key"]
 
         if agent.api_mode == "anthropic_messages":
-            from agent.anthropic_adapter import build_anthropic_client
+            from agent.plugin_registries import registries
+            build_anthropic_client = registries.get_provider_service("anthropic", "build_anthropic_client")
             agent._anthropic_api_key = rt["anthropic_api_key"]
             agent._anthropic_base_url = rt["anthropic_base_url"]
             agent._anthropic_client = build_anthropic_client(
@@ -923,7 +924,8 @@ def restore_primary_runtime(agent) -> bool:
 
         # ── Rebuild client for the primary provider ──
         if agent.api_mode == "anthropic_messages":
-            from agent.anthropic_adapter import build_anthropic_client
+            from agent.plugin_registries import registries
+            build_anthropic_client = registries.get_provider_service("anthropic", "build_anthropic_client")
             agent._anthropic_api_key = rt["anthropic_api_key"]
             agent._anthropic_base_url = rt["anthropic_base_url"]
             agent._anthropic_client = build_anthropic_client(
@@ -1429,11 +1431,10 @@ def switch_model(agent, new_model, new_provider, api_key='', base_url='', api_mo
 
         # ── Build new client ──
         if api_mode == "anthropic_messages":
-            from agent.anthropic_adapter import (
-                build_anthropic_client,
-                resolve_anthropic_token,
-                _is_oauth_token,
-            )
+            from agent.plugin_registries import registries
+            build_anthropic_client = registries.get_provider_service("anthropic", "build_anthropic_client")
+            resolve_anthropic_token = registries.get_provider_service("anthropic", "resolve_anthropic_token")
+            _is_oauth_token = registries.get_provider_service("anthropic", "_is_oauth_token")
             # Only fall back to ANTHROPIC_TOKEN when the provider is actually Anthropic.
             # Other anthropic_messages providers (MiniMax, Alibaba, etc.) must use their own
             # API key — falling back would send Anthropic credentials to third-party endpoints.

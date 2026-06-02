@@ -43,3 +43,9 @@ minimax_oauth = ProviderProfile(
 register_provider(minimax)
 register_provider(minimax_cn)
 register_provider(minimax_oauth)
+
+
+def register(ctx):
+    """No-op — this provider has no workspace package yet."""
+    pass
+

@@ -27,7 +27,6 @@ from hermes_cli.models import _HERMES_USER_AGENT
 from hermes_constants import OPENROUTER_MODELS_URL
 from utils import base_url_host_matches
 
-
 _PROVIDER_ENV_HINTS = (
     "OPENROUTER_API_KEY",
     "OPENAI_API_KEY",
@@ -53,13 +52,10 @@ _PROVIDER_ENV_HINTS = (
     "TOKENHUB_API_KEY",
 )
 
-
 from hermes_constants import is_termux as _is_termux
-
 
 def _python_install_cmd() -> str:
     return "python -m pip install" if _is_termux() else "uv pip install"
-
 
 def _system_package_install_cmd(pkg: str) -> str:
     if _is_termux():
@@ -68,14 +64,12 @@ def _system_package_install_cmd(pkg: str) -> str:
         return f"brew install {pkg}"
     return f"sudo apt install {pkg}"
 
-
 def _safe_which(cmd: str) -> str | None:
     """shutil.which wrapper resilient to platform monkeypatching in tests."""
     try:
         return shutil.which(cmd)
     except Exception:
         return None
-
 
 def _termux_browser_setup_steps(node_installed: bool) -> list[str]:
     steps: list[str] = []
@@ -87,7 +81,6 @@ def _termux_browser_setup_steps(node_installed: bool) -> list[str]:
     steps.append(f"{step + 1}) agent-browser install")
     return steps
 
-
 def _termux_install_all_fallback_notes() -> list[str]:
     return [
         "Termux install profile: use .[termux-all] for broad compatibility (installer default on Termux).",
@@ -96,11 +89,9 @@ def _termux_install_all_fallback_notes() -> list[str]:
         "STT fallback: use Groq Whisper (set GROQ_API_KEY) or OpenAI Whisper (set VOICE_TOOLS_OPENAI_KEY).",
     ]
 
-
 def _has_provider_env_config(content: str) -> bool:
     """Return True when ~/.hermes/.env contains provider auth/base URL settings."""
     return any(key in content for key in _PROVIDER_ENV_HINTS)
-
 
 def _honcho_is_configured_for_doctor() -> bool:
     """Return True when Honcho is configured, even if this process has no active session."""
@@ -112,7 +103,6 @@ def _honcho_is_configured_for_doctor() -> bool:
     except Exception:
         return False
 
-
 def _is_kanban_worker_env_gate(item: dict) -> bool:
     """Return True when Kanban is unavailable only because this is not a worker process."""
     if item.get("name") != "kanban":
@@ -123,13 +113,11 @@ def _is_kanban_worker_env_gate(item: dict) -> bool:
     tools = item.get("tools") or []
     return bool(tools) and all(str(tool).startswith("kanban_") for tool in tools)
 
-
 def _doctor_tool_availability_detail(toolset: str) -> str:
     """Optional explanatory suffix for toolsets whose doctor status needs context."""
     if toolset == "kanban" and not os.environ.get("HERMES_KANBAN_TASK"):
         return "(runtime-gated; loaded only for dispatcher-spawned workers)"
     return ""
-
 
 def _apply_doctor_tool_availability_overrides(available: list[str], unavailable: list[dict]) -> tuple[list[str], list[dict]]:
     """Adjust runtime-gated tool availability for doctor diagnostics."""
@@ -147,7 +135,6 @@ def _apply_doctor_tool_availability_overrides(available: list[str], unavailable:
             continue
         updated_unavailable.append(item)
     return updated_available, updated_unavailable
-
 
 def _has_healthy_oauth_fallback_for_apikey_provider(provider_label: str) -> bool:
     """Return True when a direct API-key probe failure is non-blocking.
@@ -178,7 +165,6 @@ def _has_healthy_oauth_fallback_for_apikey_provider(provider_label: str) -> bool
             return False
     return False
 
-
 def check_ok(text: str, detail: str = ""):
     print(f"  {color('✓', Colors.GREEN)} {text}" + (f" {color(detail, Colors.DIM)}" if detail else ""))
 
@@ -191,18 +177,15 @@ def check_fail(text: str, detail: str = ""):
 def check_info(text: str):
     print(f"    {color('→', Colors.CYAN)} {text}")
 
-
 def _section(title: str) -> None:
     """Print a doctor section banner: blank line + bold cyan ◆ title."""
     print()
     print(color(f"◆ {title}", Colors.CYAN, Colors.BOLD))
 
-
 def _fail_and_issue(text: str, detail: str, fix: str, issues: list[str]) -> None:
     """Emit a check_fail and append the corresponding fix instruction."""
     check_fail(text, detail)
     issues.append(fix)
-
 
 def _read_pyproject_version() -> str | None:
     """Read the ``version = "..."`` from ``pyproject.toml`` at the project root.
@@ -305,7 +288,6 @@ def _check_s6_supervision(issues: list[str]) -> None:
         + (f" ({', '.join(sorted(profiles))})" if len(profiles) <= 8 else "")
     )
 
-
 def _check_gateway_service_linger(issues: list[str]) -> None:
     """Warn when a systemd user gateway service will stop after logout.
 
@@ -349,9 +331,7 @@ def _check_gateway_service_linger(issues: list[str]) -> None:
     else:
         check_warn("Could not verify systemd linger", f"({linger_detail})")
 
-
 _APIKEY_PROVIDERS_CACHE: list | None = None
-
 
 def _build_apikey_providers_list() -> list:
     """Build the API-key provider health-check list once and cache it.
@@ -443,7 +423,6 @@ def _build_apikey_providers_list() -> list:
     except Exception:
         pass
     return _static
-
 
 def run_doctor(args):
     """Run diagnostic checks."""
@@ -1532,12 +1511,15 @@ def run_doctor(args):
             return _ConnectivityResult("Anthropic API", [], [])
         try:
             import httpx
-            from agent.anthropic_adapter import (
-                _is_oauth_token,
-                _COMMON_BETAS,
-                _OAUTH_ONLY_BETAS,
-                _CONTEXT_1M_BETA,
-            )
+            from agent.plugin_registries import registries
+            _anthropic_ns = registries.get_provider_namespace("anthropic")
+            _is_oauth_token = _anthropic_ns.get("_is_oauth_token")
+            # _COMMON_BETAS and _CONTEXT_1M_BETA are now in core
+            from agent.anthropic_format import _COMMON_BETAS, _CONTEXT_1M_BETA
+            _OAUTH_ONLY_BETAS = _anthropic_ns.get("_OAUTH_ONLY_BETAS")
+
+            if not all([_is_oauth_token, _OAUTH_ONLY_BETAS]):
+                raise ImportError("anthropic provider services not fully registered")
             headers = {"anthropic-version": "2023-06-01"}
             is_oauth = _is_oauth_token(key)
             if is_oauth:
@@ -1681,11 +1663,13 @@ def run_doctor(args):
 
     def _probe_bedrock() -> _ConnectivityResult:
         try:
-            from agent.bedrock_adapter import (
-                has_aws_credentials,
-                resolve_aws_auth_env_var,
-                resolve_bedrock_region,
-            )
+            from agent.plugin_registries import registries
+            _bedrock_ns = registries.get_provider_namespace("bedrock")
+            has_aws_credentials = _bedrock_ns.get("has_aws_credentials")
+            resolve_aws_auth_env_var = _bedrock_ns.get("resolve_aws_auth_env_var")
+            resolve_bedrock_region = _bedrock_ns.get("resolve_bedrock_region")
+            if not all([has_aws_credentials, resolve_aws_auth_env_var, resolve_bedrock_region]):
+                raise ImportError("bedrock provider services not fully registered")
         except ImportError:
             return _ConnectivityResult("AWS Bedrock", [], [])
         if not has_aws_credentials():
@@ -1756,12 +1740,14 @@ def run_doctor(args):
             return _ConnectivityResult("Azure Foundry (Entra ID)", [], [])
 
         try:
-            from agent.azure_identity_adapter import (
-                EntraIdentityConfig,
-                SCOPE_AI_AZURE_DEFAULT,
-                describe_active_credential,
-                has_azure_identity_installed,
-            )
+            from agent.plugin_registries import registries
+            _azure_ns = registries.get_provider_namespace("azure")
+            EntraIdentityConfig = _azure_ns.get("EntraIdentityConfig")
+            SCOPE_AI_AZURE_DEFAULT = _azure_ns.get("SCOPE_AI_AZURE_DEFAULT")
+            describe_active_credential = _azure_ns.get("describe_active_credential")
+            has_azure_identity_installed = _azure_ns.get("has_azure_identity_installed")
+            if not all([EntraIdentityConfig, SCOPE_AI_AZURE_DEFAULT, describe_active_credential, has_azure_identity_installed]):
+                raise ImportError("azure provider services not fully registered")
         except Exception as exc:
             return _ConnectivityResult(
                 "Azure Foundry (Entra ID)",

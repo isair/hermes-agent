@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-agent-hindsight"
+version = "1.0.0"
+description = "Hindsight long-term memory with knowledge graph for Hermes Agent"
+requires-python = ">=3.11"
+dependencies = [
+    "hermes-agent",
+    "hindsight-client==0.6.1",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+hindsight = "hermes_agent_hindsight:register"
+
+[tool.setuptools.packages.find]
+include = ["hermes_agent_hindsight*"]

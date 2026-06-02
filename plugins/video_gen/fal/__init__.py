@@ -296,13 +296,13 @@ _fal_client: Any = None
 def _load_fal_client() -> Any:
     """Lazy-load the ``fal_client`` SDK and cache it on this module.
 
-    Delegates the actual import to :func:`tools.fal_common.import_fal_client`
-    so the ``lazy_deps`` ensure-install handling stays in one place.
+    Delegates the actual import to :func:`hermes_agent_fal.fal_common.import_fal_client`
+    so the fal-client dep is handled in one place.
     """
     global _fal_client
     if _fal_client is not None:
         return _fal_client
-    from tools.fal_common import import_fal_client
+    from hermes_agent_fal.fal_common import import_fal_client
     _fal_client = import_fal_client()
     return _fal_client
 
@@ -331,7 +331,7 @@ def _resolve_managed_fal_video_gateway():
 def _get_managed_fal_video_client(managed_gateway):
     """Reuse the managed FAL client so its internal httpx.Client is not leaked per call."""
     global _managed_fal_video_client, _managed_fal_video_client_config
-    from tools.fal_common import _ManagedFalSyncClient
+    from hermes_agent_fal.fal_common import _ManagedFalSyncClient
 
     client_config = (
         managed_gateway.gateway_origin.rstrip("/"),
@@ -370,7 +370,7 @@ def _submit_fal_video_request(endpoint: str, arguments: Dict[str, Any]):
             headers=request_headers,
         )
     except Exception as exc:
-        from tools.fal_common import _extract_http_status
+        from hermes_agent_fal.fal_common import _extract_http_status
 
         status = _extract_http_status(exc)
         if status is not None and 400 <= status < 500:

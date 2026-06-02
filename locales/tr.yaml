@@ -290,8 +290,7 @@ gateway:
 
   undo:
     nothing:               "Geri alınacak bir şey yok."
-    removed:               "↩️ {turns} tur geri alındı ({count} mesaj).\nYedeklendiği yer: \"{preview}\"\nYukarıdaki metni kopyalayıp/düzenleyip göndererek buradan yeniden sorabilirsiniz."
-    invalid_count:         "Geçersiz sayı \"{arg}\" — /undo veya /undo N kullanın."
+    removed:               "↩️ {count} mesaj geri alındı.\nKaldırıldı: \"{preview}\""
 
   update:
     platform_not_messaging:  "✗ /update yalnızca mesajlaşma platformlarında kullanılabilir. Terminalden `hermes update` komutunu çalıştırın."

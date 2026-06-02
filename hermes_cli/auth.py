@@ -1580,8 +1580,10 @@ def resolve_provider(
     # AWS Bedrock — detect via boto3 credential chain (IAM roles, SSO, env vars).
     # This runs after API-key providers so explicit keys always win.
     try:
-        from agent.bedrock_adapter import has_aws_credentials
-        if has_aws_credentials():
+        from agent.plugin_registries import registries
+        _bedrock_ns = registries.get_provider_namespace("bedrock")
+        has_aws_credentials = _bedrock_ns.get("has_aws_credentials")
+        if has_aws_credentials and has_aws_credentials():
             return "bedrock"
     except ImportError:
         pass  # boto3 not installed — skip Bedrock auto-detection
@@ -5730,8 +5732,13 @@ def get_auth_status(provider_id: Optional[str] = None) -> Dict[str, Any]:
     # AWS SDK providers (Bedrock) — check via boto3 credential chain
     if pconfig and pconfig.auth_type == "aws_sdk":
         try:
-            from agent.bedrock_adapter import has_aws_credentials
-            return {"logged_in": has_aws_credentials(), "provider": target}
+            from agent.plugin_registries import registries
+            _bedrock_ns = registries.get_provider_namespace("bedrock")
+            has_aws_credentials = _bedrock_ns.get("has_aws_credentials")
+            if has_aws_credentials:
+                return {"logged_in": has_aws_credentials(), "provider": target}
+            else:
+                return {"logged_in": False, "provider": target, "error": "boto3 not installed"}
         except ImportError:
             return {"logged_in": False, "provider": target, "error": "boto3 not installed"}
     return {"logged_in": False}
@@ -5770,11 +5777,13 @@ def _get_azure_foundry_auth_status() -> Dict[str, Any]:
 
     if auth_mode == "entra_id":
         try:
-            from agent.azure_identity_adapter import (
-                EntraIdentityConfig,
-                SCOPE_AI_AZURE_DEFAULT,
-                has_azure_identity_installed,
-            )
+            from agent.plugin_registries import registries
+            _azure_ns = registries.get_provider_namespace("azure")
+            EntraIdentityConfig = _azure_ns.get("EntraIdentityConfig")
+            SCOPE_AI_AZURE_DEFAULT = _azure_ns.get("SCOPE_AI_AZURE_DEFAULT")
+            has_azure_identity_installed = _azure_ns.get("has_azure_identity_installed")
+            if not all([EntraIdentityConfig, SCOPE_AI_AZURE_DEFAULT, has_azure_identity_installed]):
+                raise ImportError("azure provider services not fully registered")
             installed = has_azure_identity_installed()
             entra_cfg = {}
             if isinstance(model_cfg, dict) and isinstance(model_cfg.get("entra"), dict):
@@ -6165,7 +6174,6 @@ def _prompt_model_selection(
             selected=default_idx,
             cancel_returns=-1,
             description=description,
-            searchable=True,
         )
         if idx < 0:
             return None

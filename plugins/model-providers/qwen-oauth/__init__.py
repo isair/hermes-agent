@@ -80,3 +80,9 @@ qwen = QwenProfile(
 )
 
 register_provider(qwen)
+
+
+def register(ctx):
+    """No-op — this provider has no workspace package yet."""
+    pass
+

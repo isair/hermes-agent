@@ -817,6 +817,270 @@ class PluginContext:
             name,
         )
 
+    # -- auth provider registration -------------------------------------------
+
+    def register_platform_entry(
+        self,
+        name: str,
+        adapter_class: type,
+        check_requirements: Callable,
+        available_flag: str = "",
+        constants: dict | None = None,
+        helper_functions: dict | None = None,
+    ) -> None:
+        """Register a platform adapter entry in the capability registries.
+
+        This populates ``agent.plugin_registries.registries.platform_adapters``
+        so core code can look up adapter classes, constants, and helper
+        functions without importing from ``hermes_agent_*`` packages directly.
+
+        Call this **in addition to** :meth:`register_platform` — the two
+        registries serve different consumers:
+
+        * ``register_platform``  → ``gateway.platform_registry``  (gateway
+          adapter creation, setup wizard, status)
+        * ``register_platform_entry`` → ``agent.plugin_registries`` (adapter
+          class access, constants, helpers for send_message_tool, etc.)
+
+        Args:
+            name: Platform identifier (e.g. ``"telegram"``).
+            adapter_class: The adapter class itself (e.g. ``TelegramAdapter``).
+            check_requirements: Callable returning ``bool`` — are deps installed?
+            available_flag: Name of the module-level AVAILABLE boolean, if any.
+            constants: Platform-specific constants (e.g.
+                ``{"FEISHU_DOMAIN": ..., "LARK_DOMAIN": ...}``).
+            helper_functions: Platform-specific helpers (e.g.
+                ``{"_strip_mdv2": _strip_mdv2, "qr_register": qr_register}``).
+        """
+        from agent.plugin_registries import registries, PlatformAdapterEntry
+
+        entry = PlatformAdapterEntry(
+            name=name,
+            adapter_class=adapter_class,
+            check_requirements=check_requirements,
+            available_flag=available_flag,
+            constants=constants or {},
+            helper_functions=helper_functions or {},
+        )
+        registries.register_platform(entry)
+        logger.debug(
+            "Plugin %s registered platform entry: %s",
+            self.manifest.name,
+            name,
+        )
+
+    def register_tool_provider_entry(
+        self,
+        name: str,
+        tool_functions: dict | None = None,
+        check_fn: Callable | None = None,
+        constants: dict | None = None,
+        config_functions: dict | None = None,
+        environment_classes: dict | None = None,
+    ) -> None:
+        """Register a tool provider entry in the capability registries.
+
+        This populates ``agent.plugin_registries.registries.tool_providers``
+        so core code can look up tool functions, constants, and config
+        helpers without importing from ``hermes_agent_*`` packages directly.
+
+        Args:
+            name: Tool identifier (e.g. ``"tts"``, ``"stt"``).
+            tool_functions: Dict of function name → callable
+                (e.g. ``{"text_to_speech_tool": text_to_speech_tool}``).
+            check_fn: Optional callable returning ``bool`` — are deps
+                installed and configured?
+            constants: Tool-specific constants
+                (e.g. ``{"MAX_FILE_SIZE": 25 * 1024 * 1024}``).
+            config_functions: Config/utility functions
+                (e.g. ``{"is_stt_enabled": is_stt_enabled}``).
+            environment_classes: Environment classes for terminal backends
+                (e.g. ``{"DaytonaEnvironment": DaytonaEnvironment}``).
+        """
+        from agent.plugin_registries import registries, ToolProviderEntry
+
+        entry = ToolProviderEntry(
+            name=name,
+            tool_functions=tool_functions or {},
+            check_fn=check_fn,
+            constants=constants or {},
+            config_functions=config_functions or {},
+            environment_classes=environment_classes or {},
+        )
+        registries.register_tool_provider(entry)
+        logger.debug(
+            "Plugin %s registered tool provider entry: %s",
+            self.manifest.name,
+            name,
+        )
+
+    def register_provider_services(
+        self,
+        name: str,
+        services: dict,
+    ) -> None:
+        """Register a namespace dict of provider-specific services.
+
+        This is the escape hatch for model-provider plugins that expose many
+        symbols (anthropic has 50+).  Each plugin registers its public surface
+        as a flat dict of ``{symbol_name: callable_or_value}``.  Core code
+        looks up specific symbols instead of importing from the plugin
+        package directly.
+
+        Args:
+            name: Provider identifier (e.g. ``"anthropic"``, ``"bedrock"``).
+            services: Dict of symbol name → callable or value.
+        """
+        from agent.plugin_registries import registries
+
+        registries.register_provider_services(name, services)
+        logger.debug(
+            "Plugin %s registered provider services: %s (%d symbols)",
+            self.manifest.name,
+            name,
+            len(services),
+        )
+
+    def register_auth_provider(
+        self,
+        name: str,
+        provider: Any,
+        *,
+        cli_group: str = "",
+        setup_subcommands: bool = False,
+    ) -> None:
+        """Register an authentication provider.
+
+        ``provider`` must implement the :class:`agent.plugin_registries.AuthProvider`
+        protocol (``name``, ``has_credentials``, ``check_env_vars``,
+        ``resolve_token``, ``refresh_token``).  It may also expose
+        provider-specific attributes (``_is_oauth_token``,
+        ``_HERMES_OAUTH_FILE``, ``read_claude_code_credentials``, etc.)
+        that core code accesses via the registry.
+
+        Registered providers are queried by core code via
+        ``registries.get_auth_provider(name)`` instead of importing
+        directly from ``hermes_agent_*`` packages.
+        """
+        from agent.plugin_registries import registries
+
+        registries.register_auth_provider(
+            name, provider,
+            cli_group=cli_group,
+            setup_subcommands=setup_subcommands,
+        )
+        logger.debug(
+            "Plugin %s registered auth provider: %s",
+            self.manifest.name, name,
+        )
+
+    def register_provider_resolver(
+        self,
+        name: str,
+        resolver: Any,
+    ) -> None:
+        """Register a provider resolver callable.
+
+        The resolver handles ALL provider-specific client construction
+        logic for auxiliary tasks.  Core's ``resolve_provider_client()``
+        dispatches to it instead of using per-provider if/elif branches.
+
+        Signature::
+
+            def resolver(
+                *,
+                model: str | None,
+                explicit_api_key: str | None,
+                explicit_base_url: str | None,
+                async_mode: bool,
+                is_vision: bool,
+                main_runtime: dict | None,
+                api_mode: str | None,
+            ) -> tuple[Any, str] | tuple[None, None]:
+                ...
+
+        Returns ``(client, default_model)`` or ``(None, None)``.
+        """
+        from agent.plugin_registries import registries
+
+        registries.register_provider_resolver(name, resolver)
+        logger.debug(
+            "Plugin %s registered provider resolver: %s",
+            self.manifest.name, name,
+        )
+
+    def register_transport(
+        self,
+        api_mode: str,
+        transport_cls: type,
+    ) -> None:
+        """Register a ProviderTransport class for an api_mode string.
+
+        This lets the transport registry discover provider transports
+        from plugins without core needing to import the plugin package.
+        """
+        from agent.plugin_registries import registries
+
+        registries._transports[api_mode] = transport_cls
+        logger.debug(
+            "Plugin %s registered transport: %s → %s",
+            self.manifest.name, api_mode, transport_cls.__name__,
+        )
+
+    def register_credential_pool_hook(
+        self,
+        name: str,
+        hook: Any,
+    ) -> None:
+        """Register a credential pool hook for provider-specific pool operations.
+
+        The hook should be a :class:`agent.plugin_registries.CredentialPoolHook`
+        instance with optional ``sync_from_credentials_file``,
+        ``refresh_oauth``, and ``should_include_in_pool`` callables.
+        """
+        from agent.plugin_registries import registries
+
+        registries.register_credential_pool_hook(name, hook)
+        logger.debug(
+            "Plugin %s registered credential pool hook: %s",
+            self.manifest.name, name,
+        )
+
+    def register_pricing_provider(
+        self,
+        name: str,
+        entries: list,
+    ) -> None:
+        """Register pricing entries for a provider.
+
+        ``entries`` should be a list of
+        :class:`agent.plugin_registries.PricingEntry` instances.
+        """
+        from agent.plugin_registries import registries
+
+        registries.register_pricing_provider(name, entries)
+        logger.debug(
+            "Plugin %s registered pricing provider: %s (%d entries)",
+            self.manifest.name, name, len(entries),
+        )
+
+    def register_provider_overlay(
+        self,
+        entry: Any,
+    ) -> None:
+        """Register a provider overlay entry.
+
+        ``entry`` should be a :class:`agent.plugin_registries.ProviderOverlayEntry`
+        instance.
+        """
+        from agent.plugin_registries import registries
+
+        registries.register_provider_overlay(entry)
+        logger.debug(
+            "Plugin %s registered provider overlay: %s",
+            self.manifest.name, entry.provider_name,
+        )
+
     # -- hook registration --------------------------------------------------
 
     # -- auxiliary task registration ---------------------------------------
@@ -1073,6 +1337,11 @@ class PluginManager:
         )
         logger.debug("  bundled/platforms: %d manifest(s)", len(bundled_platforms))
         manifests.extend(bundled_platforms)
+        bundled_providers = self._scan_directory(
+            repo_plugins / "model-providers", source="bundled"
+        )
+        logger.debug("  bundled/model-providers: %d manifest(s)", len(bundled_providers))
+        manifests.extend(bundled_providers)
 
         # 2. User plugins (~/.hermes/plugins/)
         user_dir = get_hermes_home() / "plugins"
@@ -1109,7 +1378,16 @@ class PluginManager:
         enabled = _get_enabled_plugins()  # None = opt-in default (nothing enabled)
         winners: Dict[str, PluginManifest] = {}
         for manifest in manifests:
-            winners[manifest.key or manifest.name] = manifest
+            key = manifest.key or manifest.name
+            existing = winners.get(key)
+            # Bundled/workspace plugins take precedence over entry-points
+            # for the same key — the local source is the one we're
+            # actively developing; the entry-point is the published
+            # version.  Only let entry-points fill gaps where no bundled
+            # version exists.
+            if existing is not None and existing.source == "bundled" and manifest.source != "bundled":
+                continue
+            winners[key] = manifest
         for manifest in winners.values():
             lookup_key = manifest.key or manifest.name
 
@@ -1137,30 +1415,12 @@ class PluginManager:
                 )
                 continue
 
-            # Model provider plugins are loaded by providers/__init__.py
-            # (its own lazy discovery keyed off first get_provider_profile()
-            # call). We record the manifest here for introspection but do
-            # not import the module — a second import would create two
-            # ProviderProfile instances and break the "last writer wins"
-            # override semantics between bundled and user plugins.
-            if manifest.kind == "model-provider":
-                loaded = LoadedPlugin(manifest=manifest, enabled=True)
-                self._plugins[lookup_key] = loaded
-                logger.debug(
-                    "Skipping '%s' (model-provider, handled by providers/ discovery)",
-                    lookup_key,
-                )
-                continue
-
-            # Built-in backends auto-load — they ship with hermes and must
-            # just work. Selection among them (e.g. which image_gen backend
-            # services calls) is driven by ``<category>.provider`` config,
-            # enforced by the tool wrapper.
-            #
-            # Bundled platform plugins (gateway adapters like IRC) auto-load
-            # for the same reason: every platform Hermes ships must be
-            # available out of the box without the user having to opt in.
-            if manifest.source == "bundled" and manifest.kind in {"backend", "platform"}:
+            # Model provider plugins auto-load just like backends and
+            # platforms. They register their provider services (auth,
+            # transport, metadata) via ctx.register_provider_services()
+            # in their register() function, which populates the
+            # capability registries that core code queries.
+            if manifest.source == "bundled" and manifest.kind in {"backend", "platform", "model-provider"}:
                 self._load_plugin(manifest)
                 continue
 

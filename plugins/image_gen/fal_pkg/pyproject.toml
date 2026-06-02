@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-agent-fal"
+version = "0.1.0"
+description = "FAL.ai SDK plumbing plugin for Hermes Agent"
+requires-python = ">=3.11"
+dependencies = [
+    "hermes-agent",
+    "fal-client==0.13.1",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+fal = "hermes_agent_fal:register"
+
+[tool.setuptools.packages.find]
+include = ["hermes_agent_fal*"]

@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-agent-daytona"
+version = "0.1.0"
+description = "Daytona cloud execution environment plugin for Hermes Agent"
+requires-python = ">=3.11"
+dependencies = [
+    "hermes-agent",
+    "daytona==0.155.0",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+daytona = "hermes_agent_daytona:register"
+
+[tool.setuptools.packages.find]
+include = ["hermes_agent_daytona*"]

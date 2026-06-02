@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-agent-firecrawl"
+version = "1.0.0"
+description = "Firecrawl web search and content extraction for Hermes Agent"
+requires-python = ">=3.11"
+dependencies = [
+    "hermes-agent",
+    "firecrawl-py==4.17.0",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+firecrawl = "hermes_agent_firecrawl:register"
+
+[tool.setuptools.packages.find]
+include = ["hermes_agent_firecrawl*"]

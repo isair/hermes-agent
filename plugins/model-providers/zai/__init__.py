@@ -19,3 +19,9 @@ zai = ProviderProfile(
 )
 
 register_provider(zai)
+
+
+def register(ctx):
+    """No-op — this provider has no workspace package yet."""
+    pass
+

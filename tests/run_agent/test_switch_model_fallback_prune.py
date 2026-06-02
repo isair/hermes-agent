@@ -10,6 +10,7 @@ model and the tui keeps trying openrouter".
 from unittest.mock import MagicMock, patch
 
 from run_agent import AIAgent
+from agent.plugin_registries import registries
 
 
 def _make_agent(chain):
@@ -39,9 +40,11 @@ def _make_agent(chain):
 
 def _switch_to_anthropic(agent):
     with (
-        patch("agent.anthropic_adapter.build_anthropic_client", return_value=MagicMock()),
-        patch("agent.anthropic_adapter.resolve_anthropic_token", return_value="sk-ant-xyz"),
-        patch("agent.anthropic_adapter._is_oauth_token", return_value=False),
+        patch.dict(registries._provider_services, {"anthropic": {
+            "build_anthropic_client": MagicMock(return_value=MagicMock()),
+            "resolve_anthropic_token": MagicMock(return_value="sk-ant-xyz"),
+            "_is_oauth_token": MagicMock(return_value=False),
+        }}),
         patch("hermes_cli.timeouts.get_provider_request_timeout", return_value=None),
     ):
         agent.switch_model(

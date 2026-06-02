@@ -12,3 +12,9 @@ ollama_cloud = ProviderProfile(
 )
 
 register_provider(ollama_cloud)
+
+
+def register(ctx):
+    """No-op — this provider has no workspace package yet."""
+    pass
+

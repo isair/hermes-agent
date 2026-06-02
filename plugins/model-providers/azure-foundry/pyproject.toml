@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-agent-azure"
+version = "0.1.0"
+description = "Microsoft Entra ID / Azure Identity adapter for Hermes Agent"
+requires-python = ">=3.11"
+dependencies = [
+    "hermes-agent",
+    "azure-identity==1.25.3",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+azure = "hermes_agent_azure:register"
+
+[tool.setuptools.packages.find]
+include = ["hermes_agent_azure*"]

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-agent-dashboard"
+version = "0.1.0"
+description = "Hermes Agent web dashboard (FastAPI + Uvicorn)"
+requires-python = ">=3.11"
+dependencies = [
+    "hermes-agent",
+    "fastapi==0.133.1",
+    "uvicorn[standard]==0.41.0",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+dashboard = "hermes_agent_dashboard:register"
+
+[tool.setuptools.packages.find]
+include = ["hermes_agent_dashboard*"]

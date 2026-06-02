@@ -218,7 +218,7 @@ class TestDiscordTextBatching:
 
 def _make_matrix_adapter():
     """Create a minimal MatrixAdapter for testing text batching."""
-    from gateway.platforms.matrix import MatrixAdapter
+    from hermes_agent_matrix import MatrixAdapter
 
     config = PlatformConfig(enabled=True, token="test-token")
     adapter = object.__new__(MatrixAdapter)
@@ -388,7 +388,7 @@ class TestWeComTextBatching:
 
 def _make_telegram_adapter():
     """Create a minimal TelegramAdapter for testing adaptive delay."""
-    from gateway.platforms.telegram import TelegramAdapter
+    from hermes_agent_telegram import TelegramAdapter
 
     config = PlatformConfig(enabled=True, token="test-token")
     adapter = object.__new__(TelegramAdapter)
@@ -452,7 +452,8 @@ class TestTelegramAdaptiveDelay:
 
 def _make_feishu_adapter():
     """Create a minimal FeishuAdapter for testing adaptive delay."""
-    from gateway.platforms.feishu import FeishuAdapter, FeishuBatchState
+    from hermes_agent_feishu import FeishuAdapter
+    from hermes_agent_feishu.adapter import FeishuBatchState
 
     config = PlatformConfig(enabled=True, token="test-token")
     adapter = object.__new__(FeishuAdapter)

@@ -290,8 +290,7 @@ gateway:
 
   undo:
     nothing:               "Niks om ongedaan te maak nie."
-    removed:               "↩️ {turns} beurt(e) ongedaan gemaak ({count} boodskap(pe)).\nGerugsteun na: \"{preview}\"\nKopieer/wysig die teks hierbo en stuur dit om van hier af weer te vra."
-    invalid_count:         "Ongeldige getal \"{arg}\" — gebruik /undo of /undo N."
+    removed:               "↩️ {count} boodskap(pe) ongedaan gemaak.\nVerwyder: \"{preview}\""
 
   update:
     platform_not_messaging:  "✗ /update is slegs beskikbaar vanaf boodskapplatforms. Voer `hermes update` vanaf die terminale uit."

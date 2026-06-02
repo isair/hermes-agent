@@ -7,12 +7,26 @@ import pytest
 
 from hermes_cli.nous_account import NousPortalAccountInfo
 
-
 TOOLS_DIR = Path(__file__).resolve().parents[2] / "tools"
+PLUGINS_DIR = Path(__file__).resolve().parents[2] / "plugins"
 
 
 def _load_tool_module(module_name: str, filename: str):
     spec = spec_from_file_location(module_name, TOOLS_DIR / filename)
+    assert spec and spec.loader
+    module = module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_plugin_module(module_name: str, plugin_subpath: str):
+    """Load a plugin module from the plugins directory.
+
+    *plugin_subpath* is relative to PLUGINS_DIR, e.g.
+    ``"tts/hermes_agent_tts/tts_tool.py"``.
+    """
+    spec = spec_from_file_location(module_name, PLUGINS_DIR / plugin_subpath)
     assert spec and spec.loader
     module = module_from_spec(spec)
     sys.modules[module_name] = module
@@ -30,6 +44,8 @@ def _restore_tool_and_agent_modules():
         or name == "agent"
         or name.startswith("agent.")
         or name in {"fal_client", "openai"}
+        or name.startswith("hermes_agent_tts")
+        or name.startswith("hermes_agent_stt")
     }
     try:
         yield
@@ -41,6 +57,8 @@ def _restore_tool_and_agent_modules():
                 or name == "agent"
                 or name.startswith("agent.")
                 or name in {"fal_client", "openai"}
+                or name.startswith("hermes_agent_tts")
+                or name.startswith("hermes_agent_stt")
             ):
                 sys.modules.pop(name, None)
         sys.modules.update(original_modules)
@@ -119,7 +137,7 @@ def _install_fake_fal_client(captured):
             self.default_timeout = default_timeout
             self._client = object()
 
-    fal_client_module = types.SimpleNamespace(
+    fal_mod = types.SimpleNamespace(
         submit=submit,
         SyncClient=SyncClient,
         client=types.SimpleNamespace(
@@ -128,8 +146,33 @@ def _install_fake_fal_client(captured):
             SyncRequestHandle=SyncRequestHandle,
         ),
     )
-    sys.modules["fal_client"] = fal_client_module
-    return fal_client_module
+    sys.modules["fal_client"] = fal_mod
+    return fal_mod
+
+
+def _inject_fal_provider_helpers(image_generation_tool, fal_mod=None):
+    """Inject FAL provider helpers into the freshly loaded image_generation_tool.
+
+    After the pluginify refactor, tools/image_generation_tool.py resolves
+    _ManagedFalSyncClient, _extract_http_status, and _normalize_fal_queue_url_format
+    lazily from the plugin registry — which isn't populated in tests.  We
+    inject them directly (same pattern as test_image_generation.py's fixture).
+
+    If *fal_mod* is given, also set ``image_generation_tool.fal_client`` so
+    that ``_load_fal_client()`` short-circuits on the fake instead of going
+    through the empty registry.
+    """
+    if image_generation_tool._ManagedFalSyncClient is None:
+        from hermes_agent_fal.fal_common import _ManagedFalSyncClient as _MSC
+        image_generation_tool._ManagedFalSyncClient = _MSC
+    if image_generation_tool._extract_http_status is None:
+        from hermes_agent_fal.fal_common import _extract_http_status as _EHS
+        image_generation_tool._extract_http_status = _EHS
+    if image_generation_tool._normalize_fal_queue_url_format is None:
+        from hermes_agent_fal.fal_common import _normalize_fal_queue_url_format as _NFQUF
+        image_generation_tool._normalize_fal_queue_url_format = _NFQUF
+    if fal_mod is not None and image_generation_tool.fal_client is None:
+        image_generation_tool.fal_client = fal_mod
 
 
 def _install_fake_openai_module(captured, transcription_response=None):
@@ -176,7 +219,7 @@ def _install_fake_openai_module(captured, transcription_response=None):
 def test_managed_fal_submit_uses_gateway_origin_and_nous_token(monkeypatch):
     captured = {}
     _install_fake_tools_package()
-    _install_fake_fal_client(captured)
+    fal_mod = _install_fake_fal_client(captured)
     monkeypatch.delenv("FAL_KEY", raising=False)
     monkeypatch.setenv("FAL_QUEUE_GATEWAY_URL", "http://127.0.0.1:3009")
     monkeypatch.setenv("TOOL_GATEWAY_USER_TOKEN", "nous-token")
@@ -185,6 +228,9 @@ def test_managed_fal_submit_uses_gateway_origin_and_nous_token(monkeypatch):
         "tools.image_generation_tool",
         "image_generation_tool.py",
     )
+    # Inject FAL provider helpers + the fake fal_client so _load_fal_client()
+    # short-circuits on the fake instead of querying the empty registry.
+    _inject_fal_provider_helpers(image_generation_tool, fal_mod=fal_mod)
     monkeypatch.setattr(image_generation_tool.uuid, "uuid4", lambda: "fal-submit-123")
     
     image_generation_tool._submit_fal_request(
@@ -204,7 +250,7 @@ def test_managed_fal_submit_uses_gateway_origin_and_nous_token(monkeypatch):
 def test_managed_fal_submit_reuses_cached_sync_client(monkeypatch):
     captured = {}
     _install_fake_tools_package()
-    _install_fake_fal_client(captured)
+    fal_mod = _install_fake_fal_client(captured)
     monkeypatch.delenv("FAL_KEY", raising=False)
     monkeypatch.setenv("FAL_QUEUE_GATEWAY_URL", "http://127.0.0.1:3009")
     monkeypatch.setenv("TOOL_GATEWAY_USER_TOKEN", "nous-token")
@@ -213,6 +259,7 @@ def test_managed_fal_submit_reuses_cached_sync_client(monkeypatch):
         "tools.image_generation_tool",
         "image_generation_tool.py",
     )
+    _inject_fal_provider_helpers(image_generation_tool, fal_mod=fal_mod)
 
     image_generation_tool._submit_fal_request("fal-ai/flux-2-pro", {"prompt": "first"})
     first_client = captured["http_client"]
@@ -231,7 +278,10 @@ def test_openai_tts_uses_managed_audio_gateway_when_direct_key_absent(monkeypatc
     monkeypatch.setenv("TOOL_GATEWAY_DOMAIN", "nousresearch.com")
     monkeypatch.setenv("TOOL_GATEWAY_USER_TOKEN", "nous-token")
 
-    tts_tool = _load_tool_module("tools.tts_tool", "tts_tool.py")
+    tts_tool = _load_plugin_module(
+        "hermes_agent_tts.tts_tool",
+        "tts/hermes_agent_tts/tts_tool.py",
+    )
     monkeypatch.setattr(tts_tool.uuid, "uuid4", lambda: "tts-call-123")
     output_path = tmp_path / "speech.mp3"
     tts_tool._generate_openai_tts("hello world", str(output_path), {"openai": {}})
@@ -253,7 +303,10 @@ def test_openai_tts_accepts_openai_api_key_as_direct_fallback(monkeypatch, tmp_p
     monkeypatch.setenv("TOOL_GATEWAY_DOMAIN", "nousresearch.com")
     monkeypatch.setenv("TOOL_GATEWAY_USER_TOKEN", "nous-token")
 
-    tts_tool = _load_tool_module("tools.tts_tool", "tts_tool.py")
+    tts_tool = _load_plugin_module(
+        "hermes_agent_tts.tts_tool",
+        "tts/hermes_agent_tts/tts_tool.py",
+    )
     output_path = tmp_path / "speech.mp3"
     tts_tool._generate_openai_tts("hello world", str(output_path), {"openai": {}})
 
@@ -273,9 +326,9 @@ def test_transcription_uses_model_specific_response_formats(monkeypatch, tmp_pat
     monkeypatch.setenv("TOOL_GATEWAY_DOMAIN", "nousresearch.com")
     monkeypatch.setenv("TOOL_GATEWAY_USER_TOKEN", "nous-token")
 
-    transcription_tools = _load_tool_module(
-        "tools.transcription_tools",
-        "transcription_tools.py",
+    transcription_tools = _load_plugin_module(
+        "hermes_agent_stt.transcription_tools",
+        "stt/hermes_agent_stt/transcription_tools.py",
     )
     transcription_tools._load_stt_config = lambda: {"provider": "openai"}
     audio_path = tmp_path / "audio.wav"
@@ -292,9 +345,9 @@ def test_transcription_uses_model_specific_response_formats(monkeypatch, tmp_pat
         json_capture,
         transcription_response=types.SimpleNamespace(text="hello from gpt-4o"),
     )
-    transcription_tools = _load_tool_module(
-        "tools.transcription_tools",
-        "transcription_tools.py",
+    transcription_tools = _load_plugin_module(
+        "hermes_agent_stt.transcription_tools",
+        "stt/hermes_agent_stt/transcription_tools.py",
     )
 
     json_result = transcription_tools.transcribe_audio(

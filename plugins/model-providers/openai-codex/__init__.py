@@ -13,3 +13,9 @@ openai_codex = ProviderProfile(
 )
 
 register_provider(openai_codex)
+
+
+def register(ctx):
+    """No-op — this provider has no workspace package yet."""
+    pass
+

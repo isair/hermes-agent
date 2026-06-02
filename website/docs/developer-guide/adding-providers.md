@@ -348,8 +348,7 @@ python -m pytest tests/hermes_cli/test_runtime_provider_resolution.py tests/cli/
 For deeper changes, run the full suite before pushing:
 
 ```bash
-source venv/bin/activate
-python -m pytest tests/ -n0 -q
+scripts/run_tests.sh
 ```
 
 ## Step 9: Live verification

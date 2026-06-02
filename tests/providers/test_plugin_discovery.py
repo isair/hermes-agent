@@ -36,7 +36,7 @@ def test_bundled_plugins_discovered():
     plugins_dir = REPO_ROOT / "plugins" / "model-providers"
     assert plugins_dir.is_dir(), f"Missing {plugins_dir}"
 
-    child_dirs = [c for c in plugins_dir.iterdir() if c.is_dir()]
+    child_dirs = [c for c in plugins_dir.iterdir() if c.is_dir() and not c.name.startswith("_")]
     assert len(child_dirs) >= 28, f"Expected at least 28 provider plugins, found {len(child_dirs)}"
 
     for child in child_dirs:

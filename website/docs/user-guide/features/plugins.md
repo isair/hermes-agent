@@ -9,6 +9,8 @@ description: "Extend Hermes with custom tools, hooks, and integrations via the p
 
 Hermes has a plugin system for adding custom tools, hooks, and integrations without modifying core code.
 
+Every built-in optional capability — model providers, platform adapters, TTS/STT, terminal backends — ships as an **installable plugin package** in a uv workspace. The core codebase never imports plugins directly; plugins register capabilities into typed registries, and the core queries those registries at runtime. See [Plugin Architecture](/developer-guide/plugin-architecture) for the full design.
+
 If you want to create a custom tool for yourself, your team, or one project,
 this is usually the right path. The developer guide's
 [Adding Tools](/developer-guide/adding-tools) page is for built-in Hermes
@@ -113,13 +115,18 @@ Every `ctx.*` API below is available inside a plugin's `register(ctx)` function.
 | Register a context-compression engine | `ctx.register_context_engine(engine)` — see [Context Engine Plugins](/developer-guide/context-engine-plugin) |
 | Register a memory backend | Subclass `MemoryProvider` in `plugins/memory/<name>/__init__.py` — see [Memory Provider Plugins](/developer-guide/memory-provider-plugin) (uses a separate discovery system) |
 | Run a host-owned LLM call | `ctx.llm.complete(...)` / `ctx.llm.complete_structured(...)` — borrow the user's active model + auth for a one-shot completion with optional JSON schema validation. See [Plugin LLM Access](/developer-guide/plugin-llm-access) |
-| Register an inference backend (LLM provider) | `register_provider(ProviderProfile(...))` in `plugins/model-providers/<name>/__init__.py` — see [Model Provider Plugins](/developer-guide/model-provider-plugin) (uses a separate discovery system) |
+|| Register an inference backend (LLM provider) | `register_provider(ProviderProfile(...))` in `plugins/model-providers/<name>/` — see [Model Provider Plugins](/developer-guide/model-provider-plugin) (uses a separate discovery system) |
+|| Register auth capabilities | `ctx.register_auth_provider(name, provider, cli_group=..., ...)` — provider implements `has_credentials()`, `check_env_vars()`, `resolve_token()` |
+|| Register transport builders | `ctx.register_transport(name, builder)` — builder implements `build_client()`, `build_kwargs()`, `convert_messages()`, `convert_tools()` |
+|| Register model metadata | `ctx.register_model_metadata(entry)` — provides `get_context_length()`, `list_models()`, provider-specific constants |
+|| Register credential pool | `ctx.register_credential_pool(entry)` — provides `read_credentials()`, `write_credentials()`, `refresh_credentials()` |
+|| Register tool provider | `ctx.register_tool_provider(entry)` — provides tool functions, check functions, constants, environment classes |
 
 ## Plugin discovery
 
 | Source | Path | Use case |
 |--------|------|----------|
-| Bundled | `<repo>/plugins/` | Ships with Hermes — see [Built-in Plugins](/user-guide/features/built-in-plugins) |
+| Bundled (workspace) | `<repo>/plugins/<name>/` (uv workspace member) | Ships with Hermes — install with `uv sync --extra <name>` |
 | User | `~/.hermes/plugins/` | Personal plugins |
 | Project | `.hermes/plugins/` | Project-specific plugins (requires `HERMES_ENABLE_PROJECT_PLUGINS=true`) |
 | pip | `hermes_agent.plugins` entry_points | Distributed packages |
@@ -141,6 +148,8 @@ Within each source, Hermes also recognizes sub-category directories that route p
 | `plugins/model-providers/<name>/` | LLM provider profiles (`register_provider(ProviderProfile(...))`) | **Own loader** in `providers/__init__.py` (lazily scanned on first `get_provider_profile()` call) |
 
 User plugins at `~/.hermes/plugins/model-providers/<name>/` and `~/.hermes/plugins/memory/<name>/` override bundled plugins of the same name — last-writer-wins in `register_provider()` / `register_memory_provider()`. Drop a directory in, and it replaces the built-in without any repo edits.
+
+Sub-category plugins surface in `hermes plugins list` and the interactive `hermes plugins` UI under their **path-derived key** — e.g. `observability/langfuse`, `image_gen/openai`, `platforms/teams`. That key (not the bare manifest `name:`) is the value you pass to `hermes plugins enable …` / `disable …` and the string to add under `plugins.enabled` in `config.yaml`.
 
 ## Plugins are opt-in (with a few exceptions)
 
@@ -263,16 +272,19 @@ Declarative plugins are symlinked with a `nix-managed-` prefix — they coexist 
 ## Managing plugins
 
 ```bash
-hermes plugins                               # unified interactive UI
-hermes plugins list                          # table: enabled / disabled / not enabled
-hermes plugins install user/repo             # install from Git, then prompt Enable? [y/N]
-hermes plugins install user/repo --enable    # install AND enable (no prompt)
-hermes plugins install user/repo --no-enable # install but leave disabled (no prompt)
-hermes plugins update my-plugin              # pull latest
-hermes plugins remove my-plugin              # uninstall
-hermes plugins enable my-plugin              # add to allow-list
-hermes plugins disable my-plugin             # remove from allow-list + add to disabled
+hermes plugins                                       # unified interactive UI
+hermes plugins list                                  # table: enabled / disabled / not enabled
+hermes plugins install user/repo                     # install from Git, then prompt Enable? [y/N]
+hermes plugins install user/repo --enable            # install AND enable (no prompt)
+hermes plugins install user/repo --no-enable         # install but leave disabled (no prompt)
+hermes plugins update my-plugin                      # pull latest
+hermes plugins remove my-plugin                      # uninstall
+hermes plugins enable my-plugin                      # add to allow-list (flat plugin)
+hermes plugins enable observability/langfuse         # add to allow-list (sub-category plugin)
+hermes plugins disable my-plugin                     # remove from allow-list + add to disabled
 ```
+
+For plugins under a sub-category directory (e.g. `plugins/observability/langfuse/`, `plugins/image_gen/openai/`), use the full `<category>/<plugin>` key — that's exactly what `hermes plugins list` shows in the **Name** column.
 
 ### Interactive UI
 
@@ -286,6 +298,7 @@ Plugins
  → [✓] my-tool-plugin — Custom search tool
    [ ] webhook-notifier — Event hooks
    [ ] disk-cleanup — Auto-cleanup of ephemeral files [bundled]
+   [ ] observability/langfuse — Trace turns / LLM calls / tools to Langfuse [bundled]
 
   Provider Plugins
      Memory Provider          ▸ honcho

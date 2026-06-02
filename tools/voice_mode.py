@@ -887,7 +887,15 @@ def transcribe_recording(wav_path: str, model: Optional[str] = None) -> Dict[str
     Returns:
         Dict with ``success``, ``transcript``, and optionally ``error``.
     """
-    from tools.transcription_tools import MAX_FILE_SIZE, transcribe_audio
+    # Registry lookup (hermes_agent_stt is a plugin)
+    from agent.plugin_registries import registries
+    _stt = registries.get_tool_provider("stt")
+    if _stt:
+        transcribe_audio = _stt.tool_functions.get("transcribe_audio")
+        MAX_FILE_SIZE = _stt.constants.get("MAX_FILE_SIZE", 25 * 1024 * 1024)
+    else:
+        transcribe_audio = None
+        MAX_FILE_SIZE = 25 * 1024 * 1024
 
     if _should_chunk_for_transcription(wav_path, MAX_FILE_SIZE):
         result = _transcribe_wav_in_chunks(wav_path, model=model, max_file_size=MAX_FILE_SIZE)
@@ -919,7 +927,10 @@ def _transcribe_wav_in_chunks(
     max_file_size: int,
 ) -> Dict[str, Any]:
     """Split an oversized WAV into provider-sized chunks and join transcripts."""
-    from tools.transcription_tools import transcribe_audio
+    # Registry lookup (hermes_agent_stt is a plugin)
+    from agent.plugin_registries import registries
+    _stt = registries.get_tool_provider("stt")
+    transcribe_audio = _stt.tool_functions.get("transcribe_audio") if _stt else None
 
     chunk_paths: List[str] = []
     transcripts: List[str] = []
@@ -1128,7 +1139,17 @@ def check_voice_requirements() -> Dict[str, Any]:
         ``missing_packages``, and ``details``.
     """
     # Determine STT provider availability
-    from tools.transcription_tools import _get_provider, _load_stt_config, is_stt_enabled
+    # Registry lookup (hermes_agent_stt is a plugin)
+    from agent.plugin_registries import registries
+    _stt = registries.get_tool_provider("stt")
+    if _stt:
+        _get_provider = _stt.config_functions.get("_get_provider")
+        _load_stt_config = _stt.config_functions.get("_load_stt_config")
+        is_stt_enabled = _stt.config_functions.get("is_stt_enabled", lambda _cfg=None: False)
+    else:
+        _get_provider = lambda _cfg=None: "none"
+        _load_stt_config = lambda: {}
+        is_stt_enabled = lambda _cfg=None: False
     stt_config = _load_stt_config()
     stt_enabled = is_stt_enabled(stt_config)
     stt_provider = _get_provider(stt_config)

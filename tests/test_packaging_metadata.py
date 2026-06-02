@@ -67,8 +67,10 @@ def test_faster_whisper_is_not_a_base_dependency():
 
     assert not any(dep.startswith("faster-whisper") for dep in deps)
 
-    voice_extra = data["project"]["optional-dependencies"]["voice"]
-    assert any(dep.startswith("faster-whisper") for dep in voice_extra)
+    # faster-whisper now lives in the stt plugin, not the root voice extra
+    stt_plugin = tomllib.loads((REPO_ROOT / "plugins/stt/pyproject.toml").read_text(encoding="utf-8"))
+    stt_deps = stt_plugin["project"]["dependencies"]
+    assert any(dep.startswith("faster-whisper") for dep in stt_deps)
 
 
 def test_manifest_includes_bundled_skills():

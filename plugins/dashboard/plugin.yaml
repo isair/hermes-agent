@@ -1,0 +1,6 @@
+name: dashboard
+version: 0.1.0
+description: Web dashboard (FastAPI + uvicorn)
+kind: backend
+provides_tools: ["dashboard"]
+provides_hooks: []

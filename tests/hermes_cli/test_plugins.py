@@ -134,12 +134,12 @@ class TestPluginDiscovery:
         mgr.discover_and_load()
         mgr.discover_and_load()  # second call should no-op
 
-        # Filter out bundled plugins — they're always discovered.
-        non_bundled = {
+        # Filter out bundled AND entry-point plugins — only count user-dir plugins.
+        user_dir_only = {
             n: p for n, p in mgr._plugins.items()
-            if p.manifest.source != "bundled"
+            if p.manifest.source not in ("bundled", "entrypoint")
         }
-        assert len(non_bundled) == 1
+        assert len(user_dir_only) == 1
 
     def test_discover_skips_dir_without_manifest(self, tmp_path, monkeypatch):
         """Directories without plugin.yaml are silently skipped."""
@@ -150,12 +150,12 @@ class TestPluginDiscovery:
         mgr = PluginManager()
         mgr.discover_and_load()
 
-        # Filter out bundled plugins — they're always discovered.
-        non_bundled = {
+        # Filter out bundled AND entry-point plugins — only count user-dir plugins.
+        user_dir_only = {
             n: p for n, p in mgr._plugins.items()
-            if p.manifest.source != "bundled"
+            if p.manifest.source not in ("bundled", "entrypoint")
         }
-        assert len(non_bundled) == 0
+        assert len(user_dir_only) == 0
 
     def test_entry_points_scanned(self, tmp_path, monkeypatch):
         """Entry-point based plugins are discovered (mocked)."""

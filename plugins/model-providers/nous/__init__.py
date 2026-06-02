@@ -52,3 +52,9 @@ nous = NousProfile(
 )
 
 register_provider(nous)
+
+
+def register(ctx):
+    """No-op — this provider has no workspace package yet."""
+    pass
+

@@ -1,14 +1,26 @@
 """Gateway STT config tests — honor stt.enabled: false from config.yaml."""
 
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
 
+from agent.plugin_registries import registries, ToolProviderEntry
 from gateway.config import GatewayConfig, Platform, load_gateway_config
 from gateway.platforms.base import MessageEvent, MessageType
 from gateway.session import SessionSource
+
+
+def _patch_stt_provider(transcribe_audio=None):
+    """Patch registries.get_tool_provider("stt") to return a mock provider."""
+    mock_provider = ToolProviderEntry(
+        name="stt",
+        tool_functions={"transcribe_audio": transcribe_audio or MagicMock()},
+        config_functions={},
+        constants={},
+    )
+    return patch.object(registries, "get_tool_provider", return_value=mock_provider)
 
 
 def test_gateway_config_stt_disabled_from_dict_nested():
@@ -41,9 +53,6 @@ async def test_enrich_message_with_transcription_surfaces_path_when_stt_disabled
     runner._has_setup_skill = lambda: True  # Should NOT be consulted in disabled branch.
 
     with patch(
-        "tools.transcription_tools.transcribe_audio",
-        side_effect=AssertionError("transcribe_audio should not be called when STT is disabled"),
-    ), patch(
         "gateway.run._probe_audio_duration",
         new=AsyncMock(return_value="0:12"),
     ):
@@ -85,9 +94,8 @@ async def test_enrich_message_with_transcription_avoids_bogus_no_provider_messag
     runner = GatewayRunner.__new__(GatewayRunner)
     runner.config = GatewayConfig(stt_enabled=True)
 
-    with patch(
-        "tools.transcription_tools.transcribe_audio",
-        return_value={"success": False, "error": "VOICE_TOOLS_OPENAI_KEY not set"},
+    with _patch_stt_provider(
+        transcribe_audio=MagicMock(return_value={"success": False, "error": "VOICE_TOOLS_OPENAI_KEY not set"}),
     ):
         result = await runner._enrich_message_with_transcription(
             "caption",
@@ -123,13 +131,12 @@ async def test_prepare_inbound_message_text_transcribes_queued_voice_event():
         media_types=["audio/ogg"],
     )
 
-    with patch(
-        "tools.transcription_tools.transcribe_audio",
-        return_value={
+    with _patch_stt_provider(
+        transcribe_audio=MagicMock(return_value={
             "success": True,
             "transcript": "queued voice transcript",
             "provider": "local_command",
-        },
+        }),
     ):
         result = await runner._prepare_inbound_message_text(
             event=event,

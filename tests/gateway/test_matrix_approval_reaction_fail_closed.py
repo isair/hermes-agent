@@ -39,7 +39,7 @@ def _stub_mautrix():
 
 _stub_mautrix()
 
-from gateway.platforms.matrix import MatrixAdapter, _MatrixApprovalPrompt  # noqa: E402
+from hermes_agent_matrix.adapter import MatrixAdapter, _MatrixApprovalPrompt  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

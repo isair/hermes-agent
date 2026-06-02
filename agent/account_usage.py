@@ -6,7 +6,9 @@ from typing import Any, Optional
 
 import httpx
 
-from agent.anthropic_adapter import _is_oauth_token, resolve_anthropic_token
+from agent.plugin_registries import registries
+_is_oauth_token = registries.get_provider_service("anthropic", "_is_oauth_token")
+resolve_anthropic_token = registries.get_provider_service("anthropic", "resolve_anthropic_token")
 from hermes_cli.auth import _read_codex_tokens, resolve_codex_runtime_credentials
 from hermes_cli.runtime_provider import resolve_runtime_provider
 
@@ -176,7 +178,7 @@ def _fetch_anthropic_account_usage() -> Optional[AccountUsageSnapshot]:
     token = (resolve_anthropic_token() or "").strip()
     if not token:
         return None
-    if not _is_oauth_token(token):
+    if _is_oauth_token is not None and not _is_oauth_token(token):
         return AccountUsageSnapshot(
             provider="anthropic",
             source="oauth_usage_api",

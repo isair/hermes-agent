@@ -1,0 +1,6 @@
+name: modal
+version: 0.1.0
+description: Modal serverless terminal backend
+kind: backend
+provides_tools: ["modal"]
+provides_hooks: []

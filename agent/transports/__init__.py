@@ -47,9 +47,16 @@ def get_transport(api_mode: str):
 
 
 def _discover_transports() -> None:
-    """Import all transport modules to trigger auto-registration."""
+    """Import all transport modules to trigger auto-registration.
+
+    Also checks the plugin registry for transports registered by plugins
+    (e.g. anthropic_messages from the anthropic plugin, bedrock_converse
+    from the bedrock plugin).  Plugin-registered transports take priority
+    over core fallbacks when both exist.
+    """
     global _discovered
     _discovered = True
+    # Core transport modules (registered automatically — no plugin needed)
     try:
         import agent.transports.anthropic  # noqa: F401
     except ImportError:
@@ -62,7 +69,10 @@ def _discover_transports() -> None:
         import agent.transports.chat_completions  # noqa: F401
     except ImportError:
         pass
+    # Plugin-registered transports (override core fallbacks)
     try:
-        import agent.transports.bedrock  # noqa: F401
+        from agent.plugin_registries import registries
+        for api_mode, transport_cls in registries._transports.items():
+            _REGISTRY.setdefault(api_mode, transport_cls)
     except ImportError:
         pass

@@ -118,16 +118,23 @@ def test_anthropic_client_rebuild_failure_rolls_back_to_original_state():
     original_anthropic_key = agent._anthropic_api_key
     original_anthropic_base = agent._anthropic_base_url
 
+    from agent.plugin_registries import registries
+    _orig_get = registries.get_provider_service
+
+    def _svc(provider, name):
+        if provider == "anthropic":
+            if name == "build_anthropic_client":
+                def _raise(*a, **k):
+                    raise RuntimeError("simulated anthropic build failure")
+                return _raise
+            if name == "resolve_anthropic_token":
+                return lambda: "sk-ant-resolved"
+            if name == "_is_oauth_token":
+                return lambda _t: False
+        return _orig_get(provider, name)
+
     with (
-        patch(
-            "agent.anthropic_adapter.build_anthropic_client",
-            side_effect=RuntimeError("simulated anthropic build failure"),
-        ),
-        patch(
-            "agent.anthropic_adapter.resolve_anthropic_token",
-            return_value="sk-ant-resolved",
-        ),
-        patch("agent.anthropic_adapter._is_oauth_token", return_value=False),
+        patch.object(registries, "get_provider_service", _svc),
         patch("hermes_cli.timeouts.get_provider_request_timeout", return_value=None),
     ):
         with pytest.raises(RuntimeError, match="simulated anthropic build failure"):

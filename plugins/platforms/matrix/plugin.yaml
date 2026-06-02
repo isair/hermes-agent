@@ -1,0 +1,6 @@
+name: matrix
+version: 0.1.0
+description: Matrix platform adapter for Hermes Agent
+kind: platform
+provides_tools: []
+provides_hooks: []

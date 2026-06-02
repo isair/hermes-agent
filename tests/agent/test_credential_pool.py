@@ -1470,13 +1470,14 @@ def test_load_pool_removes_stale_file_backed_singleton_entry(tmp_path, monkeypat
         },
     )
 
+    from agent.plugin_registries import registries
+    _orig_get = registries.get_provider_service
     monkeypatch.setattr(
-        "agent.anthropic_adapter.read_hermes_oauth_credentials",
-        lambda: None,
-    )
-    monkeypatch.setattr(
-        "agent.anthropic_adapter.read_claude_code_credentials",
-        lambda: None,
+        registries,
+        "get_provider_service",
+        lambda p, n: (lambda: None) if p == "anthropic" and n in (
+            "read_hermes_oauth_credentials", "read_claude_code_credentials"
+        ) else _orig_get(p, n),
     )
 
     from agent.credential_pool import load_pool
@@ -1562,17 +1563,49 @@ def test_singleton_seed_does_not_clobber_manual_oauth_entry(tmp_path, monkeypatc
         },
     )
 
+    from agent.plugin_registries import registries
+    from agent.plugin_registries import CredentialPoolHook
+    _orig_get = registries.get_provider_service
     monkeypatch.setattr(
-        "agent.anthropic_adapter.read_hermes_oauth_credentials",
-        lambda: {
+        registries,
+        "get_provider_service",
+        lambda p, n: (lambda: {
             "accessToken": "seeded-token",
             "refreshToken": "seeded-refresh",
             "expiresAt": 1711234999000,
-        },
+        }) if p == "anthropic" and n == "read_hermes_oauth_credentials"
+        else (lambda: None) if p == "anthropic" and n == "read_claude_code_credentials"
+        else _orig_get(p, n),
     )
+
+    # The credential pool hook drives singleton seeding — mock it so the
+    # discover_credentials path reads from the mocked service above.
+    def _mock_discover(entries, provider, is_suppressed):
+        from unittest.mock import MagicMock as _MM
+        from agent.credential_pool import _upsert_entry, AUTH_TYPE_OAUTH
+        read_fn = registries.get_provider_service("anthropic", "read_hermes_oauth_credentials")
+        creds = read_fn() if read_fn else None
+        if not creds:
+            return False, set()
+        source = "hermes_pkce"
+        if is_suppressed(provider, source):
+            return False, set()
+        changed = _upsert_entry(
+            entries, provider, source,
+            {
+                "source": source,
+                "auth_type": AUTH_TYPE_OAUTH,
+                "access_token": creds.get("accessToken", ""),
+                "refresh_token": creds.get("refreshToken"),
+                "expires_at": creds.get("expiresAt"),
+            },
+        )
+        return changed, {source}
+
     monkeypatch.setattr(
-        "agent.anthropic_adapter.read_claude_code_credentials",
-        lambda: None,
+        registries,
+        "get_credential_pool_hook",
+        lambda p: CredentialPoolHook(discover_credentials=_mock_discover) if p == "anthropic" else None,
     )
 
     from agent.credential_pool import load_pool
@@ -1591,17 +1624,18 @@ def test_load_pool_prefers_anthropic_env_token_over_file_backed_oauth(tmp_path, 
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     _write_auth_store(tmp_path, {"version": 1, "providers": {}})
 
+    from agent.plugin_registries import registries
+    _orig_get = registries.get_provider_service
     monkeypatch.setattr(
-        "agent.anthropic_adapter.read_hermes_oauth_credentials",
-        lambda: {
+        registries,
+        "get_provider_service",
+        lambda p, n: (lambda: {
             "accessToken": "file-backed-token",
             "refreshToken": "refresh-token",
             "expiresAt": int(time.time() * 1000) + 3_600_000,
-        },
-    )
-    monkeypatch.setattr(
-        "agent.anthropic_adapter.read_claude_code_credentials",
-        lambda: None,
+        }) if p == "anthropic" and n == "read_hermes_oauth_credentials"
+        else (lambda: None) if p == "anthropic" and n == "read_claude_code_credentials"
+        else _orig_get(p, n),
     )
 
     from agent.credential_pool import load_pool
@@ -1653,8 +1687,24 @@ def test_load_pool_api_key_path_skips_oauth_autodiscovery(tmp_path, monkeypatch)
             "expiresAt": int(time.time() * 1000) + 3_600_000,
         }
 
-    monkeypatch.setattr("agent.anthropic_adapter.read_hermes_oauth_credentials", _fake_pkce)
-    monkeypatch.setattr("agent.anthropic_adapter.read_claude_code_credentials", _fake_cc)
+    from agent.plugin_registries import registries, CredentialPoolHook
+    _orig_get = registries.get_provider_service
+    monkeypatch.setattr(
+        registries,
+        "get_provider_service",
+        lambda p, n: (_fake_pkce if p == "anthropic" and n == "read_hermes_oauth_credentials"
+                      else _fake_cc if p == "anthropic" and n == "read_claude_code_credentials"
+                      else _orig_get(p, n)),
+    )
+    # Core tests don't trigger plugin discovery, so register the REAL anthropic
+    # discover_credentials hook directly — this test exercises the api_key_path
+    # security logic that lives inside it.
+    from hermes_agent_anthropic.credential_pool_hook import discover_credentials as _real_discover
+    monkeypatch.setattr(
+        registries,
+        "get_credential_pool_hook",
+        lambda p: CredentialPoolHook(discover_credentials=_real_discover) if p == "anthropic" else None,
+    )
 
     from agent.credential_pool import load_pool
 
@@ -1707,8 +1757,21 @@ def test_load_pool_api_key_path_prunes_stale_oauth_entries(tmp_path, monkeypatch
         },
     )
     monkeypatch.setattr("hermes_cli.auth.is_provider_explicitly_configured", lambda pid: True)
-    monkeypatch.setattr("agent.anthropic_adapter.read_hermes_oauth_credentials", lambda: None)
-    monkeypatch.setattr("agent.anthropic_adapter.read_claude_code_credentials", lambda: None)
+    from agent.plugin_registries import registries, CredentialPoolHook
+    _orig_get = registries.get_provider_service
+    monkeypatch.setattr(
+        registries,
+        "get_provider_service",
+        lambda p, n: ((lambda: None) if p == "anthropic" and n in (
+            "read_hermes_oauth_credentials", "read_claude_code_credentials")
+            else _orig_get(p, n)),
+    )
+    from hermes_agent_anthropic.credential_pool_hook import discover_credentials as _real_discover
+    monkeypatch.setattr(
+        registries,
+        "get_credential_pool_hook",
+        lambda p: CredentialPoolHook(discover_credentials=_real_discover) if p == "anthropic" else None,
+    )
 
     from agent.credential_pool import load_pool
 
@@ -1735,17 +1798,25 @@ def test_load_pool_oauth_path_still_autodiscovers(tmp_path, monkeypatch):
     _write_auth_store(tmp_path, {"version": 1, "providers": {}})
     monkeypatch.setattr("hermes_cli.auth.is_provider_explicitly_configured", lambda pid: True)
 
+    from agent.plugin_registries import registries, CredentialPoolHook
+    _orig_get = registries.get_provider_service
+    _fake_cc_creds = {
+        "accessToken": "sk-ant...d-cc",
+        "refreshToken": "cc-refresh",
+        "expiresAt": int(time.time() * 1000) + 3_600_000,
+    }
     monkeypatch.setattr(
-        "agent.anthropic_adapter.read_hermes_oauth_credentials",
-        lambda: None,
+        registries,
+        "get_provider_service",
+        lambda p, n: ((lambda: None) if p == "anthropic" and n == "read_hermes_oauth_credentials"
+                      else (lambda: _fake_cc_creds) if p == "anthropic" and n == "read_claude_code_credentials"
+                      else _orig_get(p, n)),
     )
+    from hermes_agent_anthropic.credential_pool_hook import discover_credentials as _real_discover
     monkeypatch.setattr(
-        "agent.anthropic_adapter.read_claude_code_credentials",
-        lambda: {
-            "accessToken": "sk-ant-oat01-autodiscovered-cc",
-            "refreshToken": "cc-refresh",
-            "expiresAt": int(time.time() * 1000) + 3_600_000,
-        },
+        registries,
+        "get_credential_pool_hook",
+        lambda p: CredentialPoolHook(discover_credentials=_real_discover) if p == "anthropic" else None,
     )
 
     from agent.credential_pool import load_pool
@@ -2206,13 +2277,15 @@ def test_load_pool_does_not_seed_claude_code_when_anthropic_not_configured(tmp_p
     _write_auth_store(tmp_path, {"version": 1, "credential_pool": {}})
 
     # Claude Code credentials exist on disk
+    from agent.plugin_registries import registries
+    _orig_get = registries.get_provider_service
     monkeypatch.setattr(
-        "agent.anthropic_adapter.read_claude_code_credentials",
-        lambda: {"accessToken": "sk-ant...oken", "refreshToken": "rt", "expiresAt": 9999999999999},
-    )
-    monkeypatch.setattr(
-        "agent.anthropic_adapter.read_hermes_oauth_credentials",
-        lambda: None,
+        registries,
+        "get_provider_service",
+        lambda p, n: (lambda: {"accessToken": "sk-ant...oken", "refreshToken": "rt", "expiresAt": 9999999999999})
+        if p == "anthropic" and n == "read_claude_code_credentials"
+        else (lambda: None) if p == "anthropic" and n == "read_hermes_oauth_credentials"
+        else _orig_get(p, n),
     )
     # User configured kimi-coding, NOT anthropic
     monkeypatch.setattr(

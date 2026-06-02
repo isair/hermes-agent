@@ -1,0 +1,6 @@
+name: tts
+version: 0.1.0
+description: Text-to-speech tool plugin (Edge TTS + ElevenLabs)
+kind: backend
+provides_tools: ["tts"]
+provides_hooks: []

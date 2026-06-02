@@ -260,6 +260,239 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
           echo "ok" > $out/result
         '';
 
+        # ── Plugin architecture (hermetic core boundary) ───────────────────
+        #
+        # These checks prove that under NixOS (sealed venv, no pip install),
+        # the plugin system works correctly:
+        #   1. Core never imports from hermes_agent_* packages directly
+        #   2. Plugin registries are populated after discovery
+        #   3. Provider service namespaces are queryable
+        #   4. Optional plugins degrade gracefully (None returns, no crash)
+        #   5. No ensure() / lazy_deps / pip-install at runtime
+
+        # Check 1: Zero direct hermes_agent_* imports in core code
+        plugin-hermetic-boundary = pkgs.runCommand "hermes-plugin-hermetic-boundary" { } ''
+          set -e
+          echo "=== Checking core never imports from plugin packages ==="
+
+          # Search for direct imports from hermes_agent_* in core code
+          # (excluding plugins/, tests/, website/, and comments)
+          VIOLATIONS=$(${hermesVenv}/bin/python3 -c '
+          import subprocess, re, sys
+          result = subprocess.run(
+            ["grep", "-rn",
+             "from hermes_agent_\\|import hermes_agent_",
+             "${hermes-agent}/share/hermes-agent"],
+            capture_output=True, text=True
+          )
+          lines = result.stdout.strip().split("\n") if result.stdout.strip() else []
+          # Filter: only .py files, not in plugins/ or tests/, not comments
+          violations = []
+          for line in lines:
+            if not line.endswith(".py"):
+              continue
+            parts = line.split(":", 2)
+            if len(parts) < 3:
+              continue
+            filepath, lineno, content = parts
+            # Skip plugin directories
+            if "/plugins/" in filepath:
+              continue
+            # Skip test directories
+            if "/tests/" in filepath or "/test_" in filepath:
+              continue
+            # Skip comments
+            stripped = content.lstrip()
+            if stripped.startswith("#"):
+              continue
+            violations.append(line)
+          for v in violations:
+            print(v)
+          sys.exit(1 if violations else 0)
+          ' 2>&1 || true)
+
+          if [ -n "$VIOLATIONS" ]; then
+            echo "FAIL: Core code imports directly from plugin packages:"
+            echo "$VIOLATIONS"
+            exit 1
+          fi
+          echo "PASS: Zero direct hermes_agent_* imports in core"
+
+          echo "=== Checking no ensure() / LAZY_DEPS in core ==="
+          ENSURE_VIOLATIONS=$(grep -rn 'ensure(' ${hermes-agent}/share/hermes-agent/agent/ ${hermes-agent}/share/hermes-agent/hermes_cli/ --include='*.py' 2>/dev/null | grep -v '__pycache__' | grep -v '# ' || true)
+          if [ -n "$ENSURE_VIOLATIONS" ]; then
+            echo "FAIL: ensure() still used in core:"
+            echo "$ENSURE_VIOLATIONS"
+            exit 1
+          fi
+          echo "PASS: No ensure() calls in core code"
+
+          mkdir -p $out
+          echo "ok" > $out/result
+        '';
+
+        # Check 2: Plugin registries populate after discovery
+        plugin-registries-populate = pkgs.runCommand "hermes-plugin-registries-populate" { } ''
+          set -e
+          echo "=== Checking plugin registries populate after discovery ==="
+          export HOME=$(mktemp -d)
+
+          RESULT=$(${hermesVenv}/bin/python3 -c '
+          import json, sys
+          from hermes_cli.plugins import PluginManager
+          from agent.plugin_registries import registries
+
+          pm = PluginManager()
+          pm.discover_and_load(force=True)
+
+          out = {
+            "provider_services": list(registries._provider_services.keys()),
+            "platform_adapters": list(registries.platform_adapters.keys()),
+            "tool_providers": list(registries.tool_providers.keys()),
+          }
+          json.dump(out, sys.stdout)
+          ' 2>/dev/null)
+
+          echo "Registry state: $RESULT"
+
+          # Verify provider services populated
+          PROV_COUNT=$(echo "$RESULT" | ${pkgs.jq}/bin/jq '.provider_services | length')
+          if [ "$PROV_COUNT" -lt 1 ]; then
+            echo "FAIL: No provider services registered (expected >= 1)"
+            exit 1
+          fi
+          echo "PASS: $PROV_COUNT provider service(s) registered"
+
+          # Verify platform adapters populated
+          PLAT_COUNT=$(echo "$RESULT" | ${pkgs.jq}/bin/jq '.platform_adapters | length')
+          if [ "$PLAT_COUNT" -lt 1 ]; then
+            echo "FAIL: No platform adapters registered (expected >= 1)"
+            exit 1
+          fi
+          echo "PASS: $PLAT_COUNT platform adapter(s) registered"
+
+          # Verify tool providers populated
+          TOOL_COUNT=$(echo "$RESULT" | ${pkgs.jq}/bin/jq '.tool_providers | length')
+          if [ "$TOOL_COUNT" -lt 1 ]; then
+            echo "FAIL: No tool providers registered (expected >= 1)"
+            exit 1
+          fi
+          echo "PASS: $TOOL_COUNT tool provider(s) registered"
+
+          mkdir -p $out
+          echo "ok" > $out/result
+        '';
+
+        # Check 3: Specific provider service lookups work
+        plugin-provider-lookups = pkgs.runCommand "hermes-plugin-provider-lookups" { } ''
+          set -e
+          echo "=== Checking provider service lookups ==="
+          export HOME=$(mktemp -d)
+
+          RESULT=$(${hermesVenv}/bin/python3 -c '
+          import json, sys
+          from hermes_cli.plugins import PluginManager
+          from agent.plugin_registries import registries
+
+          pm = PluginManager()
+          pm.discover_and_load(force=True)
+
+          checks = {
+            "anthropic.resolve_anthropic_token": registries.get_provider_service("anthropic", "resolve_anthropic_token") is not None,
+            "bedrock.has_aws_credentials": registries.get_provider_service("bedrock", "has_aws_credentials") is not None,
+            "azure.is_token_provider": registries.get_provider_service("azure", "is_token_provider") is not None,
+          }
+          json.dump(checks, sys.stdout)
+          ' 2>/dev/null)
+
+          echo "Lookup results: $RESULT"
+
+          for key in anthropic.resolve_anthropic_token bedrock.has_aws_credentials azure.is_token_provider; do
+            VALUE=$(echo "$RESULT" | ${pkgs.jq}/bin/jq --arg k "$key" '.[$k]')
+            if [ "$VALUE" != "true" ]; then
+              echo "FAIL: $key lookup returned $VALUE (expected true)"
+              exit 1
+            fi
+            echo "PASS: $key lookup works"
+          done
+
+          mkdir -p $out
+          echo "ok" > $out/result
+        '';
+
+        # Check 4: Missing plugins degrade gracefully (no crash)
+        plugin-missing-graceful = pkgs.runCommand "hermes-plugin-missing-graceful" { } ''
+          set -e
+          echo "=== Checking missing plugins degrade gracefully ==="
+          export HOME=$(mktemp -d)
+
+          ${hermesVenv}/bin/python3 -c '
+          from agent.plugin_registries import registries
+
+          # Lookup from non-existent provider — should return None, not crash
+          result = registries.get_provider_service("nonexistent-provider", "some_function")
+          assert result is None, f"Expected None for missing provider, got {result}"
+
+          # Lookup from empty registry — should return None
+          result2 = registries.get_provider_namespace("no-such-provider")
+          assert result2 == {}, f"Expected empty dict for missing namespace, got {result2}"
+
+          # Lookup specific tool provider that does not exist
+          result3 = registries.get_tool_provider("nonexistent-tool")
+          assert result3 is None, f"Expected None for missing tool provider, got {result3}"
+
+          print("PASS: All missing-plugin lookups return None gracefully")
+          ' 2>&1
+
+          echo "PASS: Missing plugins degrade gracefully (no crash)"
+
+          mkdir -p $out
+          echo "ok" > $out/result
+        '';
+
+        # Check 5: No runtime pip install / ensure in gateway/run.py
+        plugin-no-runtime-install = pkgs.runCommand "hermes-plugin-no-runtime-install" { } ''
+          set -e
+          echo "=== Checking no runtime pip install / ensure in core ==="
+
+          # Check gateway/run.py has no ensure() or pip install
+          GATEWAY=${hermes-agent}/share/hermes-agent/gateway/run.py
+          if [ -f "$GATEWAY" ]; then
+            if grep -q 'ensure(' "$GATEWAY" || grep -q 'pip install' "$GATEWAY"; then
+              echo "FAIL: gateway/run.py contains ensure() or pip install"
+              grep -n 'ensure(\|pip install' "$GATEWAY"
+              exit 1
+            fi
+            echo "PASS: gateway/run.py has no ensure()/pip install"
+          else
+            echo "SKIP: gateway/run.py not found in package"
+          fi
+
+          # Check run_agent.py has no ensure() or pip install
+          RUN_AGENT=${hermes-agent}/share/hermes-agent/run_agent.py
+          if [ -f "$RUN_AGENT" ]; then
+            if grep -q 'ensure(' "$RUN_AGENT" || grep -q 'pip install' "$RUN_AGENT"; then
+              echo "FAIL: run_agent.py contains ensure() or pip install"
+              grep -n 'ensure(\|pip install' "$RUN_AGENT"
+              exit 1
+            fi
+            echo "PASS: run_agent.py has no ensure()/pip install"
+          else
+            echo "SKIP: run_agent.py not found in package"
+          fi
+
+          # Check tools/lazy_deps.py is gone
+          LAZY_DEPS=${hermes-agent}/share/hermes-agent/tools/lazy_deps.py
+          if [ -f "$LAZY_DEPS" ]; then
+            echo "FAIL: tools/lazy_deps.py still exists — should be removed"
+            exit 1
+          fi
+          echo "PASS: tools/lazy_deps.py removed"
+
+          mkdir -p $out
+          echo "ok" > $out/result
+        '';
+
         # Regression guard: messaging deps live outside [all], so the
         # #messaging variant must actually ship discord.py — otherwise
         # `nix profile install .#messaging` regresses to the broken default.

@@ -13,3 +13,9 @@ xai = ProviderProfile(
 )
 
 register_provider(xai)
+
+
+def register(ctx):
+    """No-op — this provider has no workspace package yet."""
+    pass
+

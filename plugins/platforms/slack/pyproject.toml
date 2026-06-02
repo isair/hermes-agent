@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-agent-slack"
+version = "0.1.0"
+description = "Slack platform adapter for Hermes Agent"
+requires-python = ">=3.11"
+dependencies = [
+    "hermes-agent",
+    "slack-bolt==1.27.0",
+    "slack-sdk==3.40.1",
+    "aiohttp==3.13.3",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+slack = "hermes_agent_slack:register"
+
+[tool.setuptools.packages.find]
+include = ["hermes_agent_slack*"]

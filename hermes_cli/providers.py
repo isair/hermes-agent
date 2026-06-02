@@ -47,6 +47,7 @@ HERMES_OVERLAYS: Dict[str, HermesOverlay] = {
     "openrouter": HermesOverlay(
         transport="openai_chat",
         is_aggregator=True,
+        extra_env_vars=("OPENAI_API_KEY",),
         base_url_env_var="OPENROUTER_BASE_URL",
     ),
     "nous": HermesOverlay(
@@ -98,10 +99,8 @@ HERMES_OVERLAYS: Dict[str, HermesOverlay] = {
         transport="openai_chat",
         extra_env_vars=("COPILOT_GITHUB_TOKEN", "GH_TOKEN"),
     ),
-    "anthropic": HermesOverlay(
-        transport="anthropic_messages",
-        extra_env_vars=("ANTHROPIC_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"),
-    ),
+    # "anthropic" overlay moved to plugin: hermes_agent_anthropic register()
+    # Plugin registers via ctx.register_provider_overlay() and core merges lazily.
     "zai": HermesOverlay(
         transport="openai_chat",
         extra_env_vars=("GLM_API_KEY", "ZAI_API_KEY", "Z_AI_API_KEY"),
@@ -203,15 +202,43 @@ HERMES_OVERLAYS: Dict[str, HermesOverlay] = {
     ),
     # Azure Foundry: supports both OpenAI-style and Anthropic-style endpoints.
     # The transport is determined at runtime from config.yaml model.api_mode.
-    "azure-foundry": HermesOverlay(
-        transport="openai_chat",  # default; overridden by api_mode in config
-        base_url_env_var="AZURE_FOUNDRY_BASE_URL",
-    ),
-    "bedrock": HermesOverlay(
-        transport="bedrock_converse",
-        auth_type="aws_sdk",
-    ),
+    # "azure-foundry" overlay moved to plugin: hermes_agent_azure register()
+    # "bedrock" overlay moved to plugin: hermes_agent_bedrock register()
+    # Plugins register via ctx.register_provider_overlay() and core merges lazily.
 }
+
+
+def _merge_plugin_overlays() -> None:
+    """Merge plugin-registered provider overlays into HERMES_OVERLAYS.
+
+    Called lazily from ``resolve_provider`` so that plugins have had a
+    chance to register by the time we need the overlay data.
+    """
+    global _plugin_overlays_merged
+    if _plugin_overlays_merged:
+        return
+    _plugin_overlays_merged = True
+    try:
+        from agent.plugin_registries import registries
+        for _name, _entry in registries.all_provider_overlays().items():
+            if _name not in HERMES_OVERLAYS:
+                HERMES_OVERLAYS[_name] = HermesOverlay(
+                    transport=_entry.transport,
+                    is_aggregator=_entry.is_aggregator,
+                    auth_type=_entry.auth_type,
+                    extra_env_vars=_entry.extra_env_vars,
+                    base_url_override=_entry.base_url_override,
+                    base_url_env_var=_entry.base_url_env_var,
+                )
+            # Also merge aliases from the plugin overlay entry
+            for _alias in _entry.aliases:
+                if _alias not in ALIASES:
+                    ALIASES[_alias] = _name
+    except Exception:
+        pass
+
+
+_plugin_overlays_merged = False
 
 
 # -- Resolved provider -------------------------------------------------------
@@ -334,11 +361,7 @@ ALIASES: Dict[str, str] = {
     "tencent-cloud": "tencent-tokenhub",
     "tencentmaas": "tencent-tokenhub",
 
-    # bedrock
-    "aws": "bedrock",
-    "aws-bedrock": "bedrock",
-    "amazon-bedrock": "bedrock",
-    "amazon": "bedrock",
+    # bedrock aliases moved to plugin: hermes_agent_bedrock register()
 
     # arcee
     "arcee-ai": "arcee",
@@ -425,6 +448,7 @@ def get_provider(name: str) -> Optional[ProviderDef]:
     except Exception:
         mdev_info = None
 
+    _merge_plugin_overlays()
     overlay = HERMES_OVERLAYS.get(canonical)
 
     if mdev_info is not None:
@@ -676,20 +700,6 @@ def resolve_provider_full(
         ProviderDef if found, else None.
     """
     canonical = normalize_provider(name)
-    raw = name.strip().lower()
-
-    # 0. User-defined config providers win over the built-in alias table.
-    #    A user who declares ``providers.<name>`` in config.yaml has stated
-    #    explicit intent for that name — it must not be hijacked by a legacy
-    #    vendor alias (e.g. bare "openai" → "openrouter"). Resolve the raw
-    #    name against user config FIRST so a configured ``providers.openai``
-    #    (pointing at api.openai.com) beats the alias that would otherwise
-    #    silently route to OpenRouter. Only the raw (pre-alias) name is tried
-    #    here; canonical/alias resolution still happens below.
-    if user_providers:
-        user_pdef = resolve_user_provider(raw, user_providers)
-        if user_pdef is not None:
-            return user_pdef
 
     # 1. Built-in (models.dev + overlays)
     pdef = get_provider(canonical)
@@ -703,7 +713,7 @@ def resolve_provider_full(
         if user_pdef is not None:
             return user_pdef
         # Try original name (in case alias didn't match)
-        user_pdef = resolve_user_provider(raw, user_providers)
+        user_pdef = resolve_user_provider(name.strip().lower(), user_providers)
         if user_pdef is not None:
             return user_pdef
 

@@ -115,3 +115,9 @@ openrouter = OpenRouterProfile(
 )
 
 register_provider(openrouter)
+
+
+def register(ctx):
+    """No-op — this provider has no workspace package yet."""
+    pass
+

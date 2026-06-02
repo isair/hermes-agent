@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-agent-honcho"
+version = "1.0.0"
+description = "Honcho AI-native memory for Hermes Agent"
+requires-python = ">=3.11"
+dependencies = [
+    "hermes-agent",
+    "honcho-ai==2.0.1",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+honcho = "hermes_agent_honcho:register"
+
+[tool.setuptools.packages.find]
+include = ["hermes_agent_honcho*"]

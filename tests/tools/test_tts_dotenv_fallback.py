@@ -43,7 +43,7 @@ class TestDotenvFallbackPerProvider:
     """
 
     def test_elevenlabs_reads_dotenv_key(self, tmp_path):
-        from tools import tts_tool
+        from hermes_agent_tts import tts_tool
 
         with patch.object(tts_tool, "get_env_value", return_value="el-dotenv-key"), \
              patch.object(tts_tool, "_import_elevenlabs") as mock_import:
@@ -61,7 +61,7 @@ class TestDotenvFallbackPerProvider:
         dotenv fallback contract from #17140 is preserved by patching the
         resolver's ``get_env_value`` rather than ``tts_tool.get_env_value``.
         """
-        from tools import tts_tool
+        from hermes_agent_tts import tts_tool
         from tools import xai_http
 
         captured: dict = {}
@@ -81,7 +81,7 @@ class TestDotenvFallbackPerProvider:
         assert captured["headers"]["Authorization"] == "Bearer xai-dotenv-key"
 
     def test_minimax_reads_dotenv_key(self, tmp_path):
-        from tools import tts_tool
+        from hermes_agent_tts import tts_tool
 
         captured: dict = {}
 
@@ -104,7 +104,7 @@ class TestDotenvFallbackPerProvider:
     def test_mistral_reads_dotenv_key(self, tmp_path):
         import base64
 
-        from tools import tts_tool
+        from hermes_agent_tts import tts_tool
 
         seen_keys: list = []
 
@@ -125,7 +125,7 @@ class TestDotenvFallbackPerProvider:
         assert seen_keys == ["mistral-dotenv-key"]
 
     def test_gemini_reads_dotenv_key(self, tmp_path):
-        from tools import tts_tool
+        from hermes_agent_tts import tts_tool
 
         captured: dict = {}
 
@@ -185,7 +185,7 @@ class TestRegressionGuard:
         """
         import importlib
         import hermes_cli.config as config_mod
-        from tools import tts_tool
+        from hermes_agent_tts import tts_tool
 
         monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
 
@@ -219,7 +219,7 @@ class TestRegressionGuard:
             importlib.reload(tts_tool)
 
     def test_minimax_missing_when_only_in_dotenv_before_fix(self, tmp_path, monkeypatch):
-        from tools import tts_tool
+        from hermes_agent_tts import tts_tool
 
         monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
 
@@ -262,7 +262,7 @@ class TestRegressionGuard:
         would say "no provider available" for users who keep MINIMAX_API_KEY
         in ``~/.hermes/.env``, even though the dispatcher would later succeed.
         """
-        from tools import tts_tool
+        from hermes_agent_tts import tts_tool
 
         monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
 

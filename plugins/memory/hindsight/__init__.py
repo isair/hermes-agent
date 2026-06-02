@@ -889,8 +889,7 @@ class HindsightMemoryProvider(MemoryProvider):
                         + (f": {reason}" if reason else "")
                     )
                 try:
-                    from tools.lazy_deps import ensure as _lazy_ensure
-                    _lazy_ensure("memory.hindsight", prompt=False)
+                    from hindsight import HindsightEmbedded  # noqa: F401 — side-effect import
                 except ImportError:
                     pass
                 except Exception as _e:

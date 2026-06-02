@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-agent-telegram"
+version = "0.1.0"
+description = "Telegram platform adapter for Hermes Agent"
+requires-python = ">=3.11"
+dependencies = [
+    "hermes-agent",
+    "python-telegram-bot[webhooks]==22.6",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+telegram = "hermes_agent_telegram:register"
+
+[tool.setuptools.packages.find]
+include = ["hermes_agent_telegram*"]

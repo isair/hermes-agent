@@ -12,3 +12,9 @@ kilocode = ProviderProfile(
 )
 
 register_provider(kilocode)
+
+
+def register(ctx):
+    """No-op — this provider has no workspace package yet."""
+    pass
+

@@ -353,11 +353,9 @@ class TestProvidersDictApiModeAnthropicMessages:
                 },
             },
         })
-        from agent.auxiliary_client import (
-            resolve_provider_client,
-            AnthropicAuxiliaryClient,
-            AsyncAnthropicAuxiliaryClient,
-        )
+        from agent.auxiliary_client import resolve_provider_client
+        from agent.plugin_registries import registries
+        from agent.anthropic_aux import AnthropicAuxiliaryClient, AsyncAnthropicAuxiliaryClient
         sync_client, sync_model = resolve_provider_client("myrelay", async_mode=False)
         assert isinstance(sync_client, AnthropicAuxiliaryClient), (
             f"expected AnthropicAuxiliaryClient, got {type(sync_client).__name__}"
@@ -395,9 +393,9 @@ class TestProvidersDictApiModeAnthropicMessages:
         from agent.auxiliary_client import (
             get_async_text_auxiliary_client,
             get_text_auxiliary_client,
-            AnthropicAuxiliaryClient,
-            AsyncAnthropicAuxiliaryClient,
         )
+        from agent.plugin_registries import registries
+        from agent.anthropic_aux import AnthropicAuxiliaryClient, AsyncAnthropicAuxiliaryClient
         async_client, async_model = get_async_text_auxiliary_client("compression")
         assert isinstance(async_client, AsyncAnthropicAuxiliaryClient)
         assert async_model == "claude-sonnet-4.6"
@@ -482,6 +480,7 @@ class TestCustomProviderAliasCollision:
         })
         monkeypatch.setenv("KIMI_API_KEY", "builtin-kimi-key")
         from agent.auxiliary_client import resolve_provider_client
+
         from openai import OpenAI
         client, _ = resolve_provider_client(
             "kimi-coding", model="kimi-k2", raw_codex=True,

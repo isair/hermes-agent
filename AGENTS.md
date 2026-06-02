@@ -2,8 +2,6 @@
 
 Instructions for AI coding assistants and developers working on the hermes-agent codebase.
 
-**Never give up on the right solution.**
-
 ## Development Environment
 
 ```bash
@@ -31,7 +29,9 @@ hermes-agent/
 ├── hermes_constants.py   # get_hermes_home(), display_hermes_home() — profile-aware paths
 ├── hermes_logging.py     # setup_logging() — agent.log / errors.log / gateway.log (profile-aware)
 ├── batch_runner.py       # Parallel batch processing
+├── _build_backend.py     # Custom PEP 517 build backend — inlines plugin deps at wheel build time
 ├── agent/                # Agent internals (provider adapters, memory, caching, compression, etc.)
+│   └── plugin_registries.py  # Typed capability registries (auth, transport, platform, tool, model_metadata)
 ├── hermes_cli/           # CLI subcommands, setup wizard, plugins loader, skin engine
 ├── tools/                # Tool implementations — auto-discovered via tools/registry.py
 │   └── environments/     # Terminal backends (local, docker, ssh, modal, daytona, singularity)
@@ -41,16 +41,20 @@ hermes-agent/
 │   │                     #   dingtalk, wecom, weixin, feishu, qqbot, bluebubbles,
 │   │                     #   yuanbao, webhook, api_server, ...). See ADDING_A_PLATFORM.md.
 │   └── builtin_hooks/    # Extension point for always-registered gateway hooks (none shipped)
-├── plugins/              # Plugin system (see "Plugins" section below)
+├── plugins/              # Plugin packages — uv workspace members (see "Plugins" section)
+│   ├── model-providers/  # anthropic, bedrock, azure-foundry (own pyproject.toml each)
+│   ├── platforms/        # telegram, slack, discord, feishu, dingtalk, matrix
+│   ├── tts/              # Text-to-speech plugin
+│   ├── stt/              # Speech-to-text plugin
+│   ├── image_gen/        # FAL image generation
+│   ├── terminals/        # daytona, modal, vercel
+│   ├── web/              # exa, firecrawl, parallel
 │   ├── memory/           # Memory-provider plugins (honcho, mem0, supermemory, ...)
 │   ├── context_engine/   # Context-engine plugins
-│   ├── model-providers/  # Inference backend plugins (openrouter, anthropic, gmi, ...)
 │   ├── kanban/           # Multi-agent board dispatcher + worker plugin
 │   ├── hermes-achievements/  # Gamified achievement tracking
 │   ├── observability/    # Metrics / traces / logs plugin
-│   ├── image_gen/        # Image-generation providers
-│   └── <others>/         # disk-cleanup, google_meet, platforms, spotify,
-│                         #   strike-freedom-cockpit, ...
+│   └── <others>/         # dashboard, google_meet, spotify, strike-freedom-cockpit, ...
 ├── optional-skills/      # Heavier/niche skills shipped but NOT active by default
 ├── skills/               # Built-in skills bundled with the repo
 ├── ui-tui/               # Ink (React) terminal UI — `hermes --tui`
@@ -67,29 +71,6 @@ hermes-agent/
 **Logs:** `~/.hermes/logs/` — `agent.log` (INFO+), `errors.log` (WARNING+),
 `gateway.log` when running the gateway. Profile-aware via `get_hermes_home()`.
 Browse with `hermes logs [--follow] [--level ...] [--session ...]`.
-
-## TypeScript Style
-
-Applies to TypeScript across Hermes: desktop, TUI, website, and future TS packages.
-
-- Prefer small nanostores over component state when state is shared, reused, or read by distant UI.
-- Let each feature own its atoms. Chat state belongs near chat, shell state near shell, shared state in `src/store`.
-- Components that render from an atom should use `useStore`. Non-rendering actions should read with `$atom.get()`.
-- Do not pass state through three components when the leaf can subscribe to the atom.
-- Keep persistence beside the atom that owns it.
-- Keep route roots thin. They compose routes and shell; they should not become controllers.
-- No monolithic hooks. A hook should own one narrow job.
-- Prefer colocated action modules over hidden god hooks.
-- If a callback is pure side effect, use the terse void form:
-  `onState={st => void setGatewayState(st)}`.
-- Async UI handlers should make intent explicit:
-  `onClick={() => void save()}`.
-- Prefer interfaces for public props and shared object shapes. Avoid `type X = { ... }` for object props.
-- Extend React primitives for props: `React.ComponentProps<'button'>`, `React.ComponentProps<typeof Dialog>`, `Omit<...>`, `Pick<...>`.
-- Table-driven beats condition ladders when mapping ids, routes, or views.
-- `src/app` owns routes, pages, and page-specific components.
-- `src/store` owns shared atoms.
-- `src/lib` owns shared pure helpers.
 
 ## File Dependency Chain
 
@@ -511,9 +492,102 @@ Activate with `/skin cyberpunk` or `display.skin: cyberpunk` in config.yaml.
 
 ## Plugins
 
-Hermes has two plugin surfaces. Both live under `plugins/` in the repo so
-repo-shipped plugins can be discovered alongside user-installed ones in
-`~/.hermes/plugins/` and pip-installed entry points.
+Hermes uses a **plugin-first architecture**: every optional capability (model
+providers, platform adapters, TTS/STT, terminal backends, image generation)
+lives in its own installable Python package under `plugins/`. The core
+codebase (`agent/`, `hermes_cli/`, `gateway/`, `tools/`) **never** imports
+from a `hermes_agent_*` plugin package directly. Instead, plugins register
+their capabilities into typed registries during `register()`, and the core
+queries those registries at runtime.
+
+Full architecture doc: `website/docs/developer-guide/plugin-architecture.md`
+
+### Workspace layout
+
+All 21 builtin plugins are uv workspace members — each has its own
+`pyproject.toml` (single source of truth for deps), `plugin.yaml`
+(directory-scanner manifest for dev mode), and `hermes_agent_<name>/` package
+with `register(ctx)`:
+
+```
+plugins/
+├── model-providers/        # anthropic, bedrock, azure-foundry
+├── platforms/              # telegram, slack, discord, feishu, dingtalk, matrix
+├── tts/                    # text-to-speech (Edge TTS + ElevenLabs)
+├── stt/                    # speech-to-text
+├── image_gen/fal_pkg/      # FAL image generation
+├── terminals/              # daytona, modal, vercel
+├── web/                    # exa, firecrawl, parallel
+├── memory/                 # honcho, hindsight
+├── dashboard/              # streamlit dashboard
+└── hermes-achievements/    # gamified achievement tracking
+```
+
+### The hermetic core boundary
+
+Core code MUST NOT import from `hermes_agent_*` packages. Instead it queries
+typed registries in `agent/plugin_registries.py`:
+
+```python
+# ❌ BAD — core directly imports plugin
+from hermes_agent_bedrock import has_aws_credentials
+
+# ✅ GOOD — core queries the registry
+from agent.plugin_registries import registries
+bedrock_auth = registries.get_auth_provider("bedrock")
+```
+
+Registry types: `auth_providers`, `transport_builders`, `platform_adapters`,
+`tool_providers`, `model_metadata`, `credential_pools`.
+
+Each plugin's `register(ctx)` populates the registries via `ctx.register_*()`:
+- `ctx.register_auth_provider(name, provider, ...)`
+- `ctx.register_transport(name, builder, ...)`
+- `ctx.register_platform(name, label, adapter_factory, check_fn, ...)`
+- `ctx.register_tool_provider(entry, ...)`
+- `ctx.register_model_metadata(entry, ...)`
+- `ctx.register_credential_pool(entry, ...)`
+- Plus existing: `register_tool()`, `register_hook()`, `register_cli_command()`,
+  `register_tts_provider()`, `register_transcription_provider()`,
+  `register_image_gen_provider()`, `register_video_gen_provider()`,
+  `register_context_engine()`
+
+### Plugin discovery
+
+Three discovery paths (same as before, now workspace-aware):
+1. **Directory scanner** — `plugins/`, `~/.hermes/plugins/`, `.hermes/plugins/`
+   (looks for `plugin.yaml`)
+2. **Entry points** — `[project.entry-points."hermes_agent.plugins"]`
+3. **uv workspace** — `uv sync --extra <name>` installs the plugin into venv
+
+### Dependency management
+
+- Each plugin's `pyproject.toml` is the **only** place its deps are declared
+- Root `pyproject.toml` maps extras to workspace members:
+  `telegram = ["hermes-agent-telegram"]`
+- `uv.lock` resolves the whole workspace (236 packages)
+- No `LAZY_DEPS`, no `ensure()`, no runtime `pip install`
+- Custom PEP 517 build backend (`_build_backend.py`) inlines plugin deps
+  at wheel build time for PyPI publishing
+
+### NixOS
+
+`loadWorkspace` discovers all workspace members from `uv.lock` automatically.
+`mkVirtualEnv { hermes-agent = ["all"] }` installs all plugins. Select specific
+plugins with `extraDependencyGroups = ["telegram", "anthropic"]`.
+
+### Tests
+
+Plugin tests live in `plugins/<category>/<name>/tests/`. The test runner
+discovers both `tests/` and `plugins/`. Running plugin tests requires the
+plugin to be installed (`uv sync --extra <name>`).
+
+### The rule
+
+**If it can be a plugin, it must be a plugin.** Adding optional capabilities
+to core files is a code review rejection. If the plugin surface doesn't
+support what you need, extend the surface (new registry type, new hook, new
+`ctx` method) — don't inline the capability.
 
 ### General plugins (`hermes_cli/plugins.py` + `plugins/<name>/`)
 
@@ -556,9 +630,14 @@ providers don't clutter `hermes --help`.
 **Rule (Teknium, May 2026):** plugins MUST NOT modify core files
 (`run_agent.py`, `cli.py`, `gateway/run.py`, `hermes_cli/main.py`, etc.).
 If a plugin needs a capability the framework doesn't expose, expand the
-generic plugin surface (new hook, new ctx method) — never hardcode
-plugin-specific logic into core. PR #5295 removed 95 lines of hardcoded
-honcho argparse from `main.py` for exactly this reason.
+generic plugin surface (new hook, new ctx method, new registry type) — never
+hardcode plugin-specific logic into core. PR #5295 removed 95 lines of
+hardcoded honcho argparse from `main.py` for exactly this reason.
+
+**Hermetic core boundary (May 2026):** core code (`agent/`, `hermes_cli/`,
+`gateway/`, `tools/`) MUST NOT import from `hermes_agent_*` plugin packages.
+Use the typed registries in `agent/plugin_registries.py` instead. See the
+**Plugins** section below for the full list of registry types.
 
 **No new in-tree memory providers (policy, May 2026):** the set of
 built-in memory providers under `plugins/memory/` is closed. New memory
@@ -1036,40 +1115,41 @@ def profile_env(tmp_path, monkeypatch):
 
 ## Testing
 
-**ALWAYS use `scripts/run_tests.sh`** — do not call `pytest` directly. The script enforces
-hermetic environment parity with CI (unset credential vars, TZ=UTC, LANG=C.UTF-8,
-`-n auto` xdist workers, in-tree subprocess-isolation plugin). Direct `pytest`
-on a 16+ core developer machine with API keys set diverges from CI in ways
-that have caused multiple "works locally, fails in CI" incidents (and the reverse).
+**ALWAYS use `scripts/run_tests.sh`** — do NOT call `pytest` directly on a directory.
+The script enforces hermetic environment parity with CI and provides per-file
+process isolation that prevents registry singleton / module-level state leakage
+between test files.
 
 ```bash
 scripts/run_tests.sh                                  # full suite, CI-parity
 scripts/run_tests.sh tests/gateway/                   # one directory
+scripts/run_tests.sh tests/agent/test_foo.py          # one file
 scripts/run_tests.sh tests/agent/test_foo.py::test_x  # one test
 scripts/run_tests.sh -v --tb=long                     # pass-through pytest flags
-scripts/run_tests.sh --no-isolate tests/foo/          # disable subprocess isolation (faster, for debugging)
 ```
 
-### Subprocess-per-test isolation
+For a **single test file or specific test**, bare `pytest` is fine:
 
-Every test runs in a freshly-spawned Python subprocess via the in-tree plugin
-at `tests/_isolate_plugin.py`. This means module-level dicts/sets and
-ContextVars from one test cannot leak into the next — the historic
-`_reset_module_state` autouse fixture is gone.
+```bash
+nix run nixpkgs#uv -- run python -m pytest tests/agent/test_foo.py -q
+nix run nixpkgs#uv -- run python -m pytest tests/agent/test_foo.py::test_x --tb=short
+```
 
-Implementation notes:
+Running bare `pytest` on a directory (e.g. `pytest tests/`) will print a warning
+from `conftest.py` telling you to use the script instead.
 
-- The plugin uses `multiprocessing.get_context("spawn")`, which works on
-  Linux, macOS, and Windows alike (POSIX `fork` is not used).
-- Per-test overhead is ~0.5–1.0s (Python startup + pytest collection). xdist
-  parallelism amortizes this across cores; on a 20-core box the full suite
-  finishes in roughly the same wall time as before, but flake-free.
-- `isolate_timeout` (configured in `pyproject.toml`) caps each test at 30s.
-  Hangs are killed and surfaced as a failure report.
-- Pass `--no-isolate` to disable isolation — useful when debugging a single
-  test interactively, or when you specifically want to verify state leakage.
-- The plugin disables itself in child processes (sentinel envvar
-  `HERMES_ISOLATE_CHILD=1`), so there's no fork-bomb risk.
+### Per-file process isolation
+
+`scripts/run_tests.sh` calls `scripts/run_tests_parallel.py`, which spawns one
+`python -m pytest <file>` subprocess per test **file** (not per test), giving each
+a fresh Python interpreter. This means module-level dicts/sets, ContextVars, and
+registry singletons from one test file cannot leak into another — no shared state
+between files, no xdist required.
+
+`HERMES_PARALLEL_RUNNER=1` is set in each subprocess so `conftest.py` knows tests
+are running under the managed runner. If you need to suppress the bare-pytest
+directory warning in a special case, set this variable yourself — but prefer the
+script.
 
 ### Why the wrapper (and why the old "just call pytest" doesn't work)
 
@@ -1081,31 +1161,13 @@ Five real sources of local-vs-CI drift the script closes:
 | HOME / `~/.hermes/` | Your real config+auth.json | Temp dir per test |
 | Timezone | Local TZ (PDT etc.) | UTC |
 | Locale | Whatever is set | C.UTF-8 |
-| xdist workers | `-n auto` = all cores | `-n auto` (safe — subprocess isolation prevents cross-worker flakes) |
+| File isolation | Shared interpreter — state leaks between files | One subprocess per file |
 
-`tests/conftest.py` also enforces points 1-4 as an autouse fixture so ANY pytest
-invocation (including IDE integrations) gets hermetic behavior — but the wrapper
-is belt-and-suspenders.
+`tests/conftest.py` also enforces the credential/TZ/locale points as an autouse
+fixture so ANY pytest invocation (including IDE integrations) gets hermetic
+behavior — but the wrapper adds per-file process isolation on top.
 
-### Running without the wrapper (only if you must)
-
-If you can't use the wrapper (e.g. inside an IDE that shells pytest directly),
-at minimum activate the venv. The isolation plugin loads automatically from
-`addopts` in `pyproject.toml`, so you get the same per-test process isolation
-either way.
-
-```bash
-source .venv/bin/activate   # or: source venv/bin/activate
-python -m pytest tests/ -q
-```
-
-If you need to bypass isolation for fast feedback while debugging:
-
-```bash
-python -m pytest tests/agent/test_foo.py -q --no-isolate
-```
-
-Always run the full suite before pushing changes.
+Always run the full suite via `scripts/run_tests.sh` before pushing changes.
 
 ### Don't write change-detector tests
 

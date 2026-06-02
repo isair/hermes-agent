@@ -143,7 +143,7 @@ class TestFeishuFallbackThreadRouting:
     async def test_create_uses_thread_id_when_available(self):
         """When reply_to=None and metadata has thread_id, message.create
         should use receive_id_type='thread_id'."""
-        from gateway.platforms.feishu import FeishuAdapter
+        from hermes_agent_feishu import FeishuAdapter
 
         # We test the _send_raw_message method directly by mocking the client
         adapter = MagicMock(spec=FeishuAdapter)
@@ -200,7 +200,7 @@ class TestFeishuFallbackThreadRouting:
     async def test_create_uses_chat_id_when_no_thread(self):
         """When reply_to=None and metadata has no thread_id, message.create
         should use receive_id_type='chat_id' (original behavior)."""
-        from gateway.platforms.feishu import FeishuAdapter
+        from hermes_agent_feishu import FeishuAdapter
 
         mock_client = MagicMock()
         mock_create_response = SimpleNamespace(

@@ -202,12 +202,14 @@ def interruptible_api_call(agent, api_kwargs: dict):
                 # normalize_converse_response produces an OpenAI-compatible
                 # SimpleNamespace so the rest of the agent loop can treat
                 # bedrock responses like chat_completions responses.
-                from agent.bedrock_adapter import (
-                    _get_bedrock_runtime_client,
-                    invalidate_runtime_client,
-                    is_stale_connection_error,
-                    normalize_converse_response,
-                )
+                from agent.plugin_registries import registries
+                _bedrock = registries.get_provider_namespace("bedrock")
+                _get_bedrock_runtime_client = _bedrock.get("_get_bedrock_runtime_client")
+                invalidate_runtime_client = _bedrock.get("invalidate_runtime_client")
+                is_stale_connection_error = _bedrock.get("is_stale_connection_error")
+                normalize_converse_response = _bedrock.get("normalize_converse_response")
+                if _get_bedrock_runtime_client is None or normalize_converse_response is None:
+                    raise ImportError("bedrock provider not registered")
                 region = api_kwargs.pop("__bedrock_region__", "us-east-1")
                 api_kwargs.pop("__bedrock_converse__", None)
                 client = _get_bedrock_runtime_client(region)
@@ -681,8 +683,11 @@ def build_api_kwargs(agent, api_messages: list) -> dict:
     _ant_max = None
     if (_is_or or _is_nous) and "claude" in (agent.model or "").lower():
         try:
-            from agent.anthropic_adapter import _get_anthropic_max_output
-            _ant_max = _get_anthropic_max_output(agent.model)
+            from agent.plugin_registries import registries
+            _anthropic = registries.get_provider_namespace("anthropic")
+            _get_anthropic_max_output = _anthropic.get("_get_anthropic_max_output")
+            if _get_anthropic_max_output is not None:
+                _ant_max = _get_anthropic_max_output(agent.model)
         except Exception:
             pass
 
@@ -1167,15 +1172,20 @@ def try_activate_fallback(agent, reason: "FailoverReason | None" = None) -> bool
 
         if fb_api_mode == "anthropic_messages":
             # Build native Anthropic client instead of using OpenAI client
-            from agent.anthropic_adapter import build_anthropic_client, resolve_anthropic_token, _is_oauth_token
-            effective_key = (fb_client.api_key or resolve_anthropic_token() or "") if fb_provider == "anthropic" else (fb_client.api_key or "")
+            from agent.plugin_registries import registries
+            _anthropic = registries.get_provider_namespace("anthropic")
+            build_anthropic_client = _anthropic.get("build_anthropic_client")
+            resolve_anthropic_token = _anthropic.get("resolve_anthropic_token")
+            _is_oauth_token = _anthropic.get("_is_oauth_token")
+            effective_key = (fb_client.api_key or (resolve_anthropic_token() if resolve_anthropic_token else "") or "") if fb_provider == "anthropic" else (fb_client.api_key or "")
             agent.api_key = effective_key
             agent._anthropic_api_key = effective_key
             agent._anthropic_base_url = fb_base_url
-            agent._anthropic_client = build_anthropic_client(
-                effective_key, agent._anthropic_base_url, timeout=_fb_timeout,
-            )
-            agent._is_anthropic_oauth = _is_oauth_token(effective_key) if fb_provider == "anthropic" else False
+            if build_anthropic_client is not None:
+                agent._anthropic_client = build_anthropic_client(
+                    effective_key, agent._anthropic_base_url, timeout=_fb_timeout,
+                )
+            agent._is_anthropic_oauth = _is_oauth_token(effective_key) if fb_provider == "anthropic" and _is_oauth_token else False
             agent.client = None
             agent._client_kwargs = {}
         else:
@@ -1571,12 +1581,14 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
 
         def _bedrock_call():
             try:
-                from agent.bedrock_adapter import (
-                    _get_bedrock_runtime_client,
-                    invalidate_runtime_client,
-                    is_stale_connection_error,
-                    stream_converse_with_callbacks,
-                )
+                from agent.plugin_registries import registries
+                _bedrock = registries.get_provider_namespace("bedrock")
+                _get_bedrock_runtime_client = _bedrock.get("_get_bedrock_runtime_client")
+                invalidate_runtime_client = _bedrock.get("invalidate_runtime_client")
+                is_stale_connection_error = _bedrock.get("is_stale_connection_error")
+                stream_converse_with_callbacks = _bedrock.get("stream_converse_with_callbacks")
+                if _get_bedrock_runtime_client is None or stream_converse_with_callbacks is None:
+                    raise ImportError("bedrock provider not registered")
                 region = api_kwargs.pop("__bedrock_region__", "us-east-1")
                 api_kwargs.pop("__bedrock_converse__", None)
                 client = _get_bedrock_runtime_client(region)

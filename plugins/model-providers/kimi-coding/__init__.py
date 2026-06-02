@@ -69,3 +69,9 @@ kimi_cn = KimiProfile(
 
 register_provider(kimi)
 register_provider(kimi_cn)
+
+
+def register(ctx):
+    """No-op — this provider has no workspace package yet."""
+    pass
+
